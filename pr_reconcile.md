@@ -53,6 +53,7 @@ C5. **Acceptance criteria variance:** tests/docs differ from DoD; raise a **ques
 C6. **Traceability gaps:** any requirement with changed code but no updated tests/links → **question** to fill the mapping, not a guess.
 
 ### D) Produce/Update `plan.md` (iteration output)
+D0. You should only touch `plan.md` if you need to make changes to it. If you have nothing to reconcile and no questions to ask, don't change `plan.md` at all and ignore the remaining Ds.
 D1. **Version bump** (`vX.Y → vX.(Y+1)`), append **Change Log** entry “PR $ARGUMENTS Reconciliation – touched: {IDs}”.  
 D2. **Open Questions**: create new `Q-ZZZ` items for **each deviation/gap**, with this structure:
    - **Text**: single-decision, closed if options exist; else “Options unknown—please specify.”  
