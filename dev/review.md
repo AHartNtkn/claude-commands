@@ -2,15 +2,32 @@
 allowed-tools: Task, Bash(gh:*), WebFetch, Bash(find:*), Bash(cargo:*)
 argument-hint: [pr-number]
 description: Comprehensive PR review with explicit algorithmic checks for code quality, security, performance, and maintainability
+context-commands:
+  - name: pr_metadata
+    command: 'gh pr view $ARGUMENTS --json number,title,body,url,headRefName,baseRefName,additions,deletions,changedFiles'
+  - name: changed_files
+    command: 'gh pr diff $ARGUMENTS --name-only'
+  - name: pr_diff
+    command: 'gh pr diff $ARGUMENTS'
+  - name: spec_exists
+    command: '[ -f .claude/spec.md ] && echo "true" || echo "false"'
+  - name: spec_requirements
+    command: '[ -f .claude/spec.md ] && grep -E "FR-|NFR-" .claude/spec.md || echo ""'
+  - name: review_criteria
+    command: '[ -f .claude/spec-state.json ] && jq ".review_criteria" .claude/spec-state.json || echo "{}"'
+  - name: plan_tasks
+    command: '[ -f .claude/plan.md ] && grep -E "T-[0-9]+" .claude/plan.md || echo ""'
 ---
 
-## Inputs
-- PR number: `$ARGUMENTS`
+## Initial Context
+- PR metadata: !{pr_metadata}
+- Changed files: !{changed_files}
+- Spec exists: !{spec_exists}
+- Review criteria from spec: !{review_criteria}
+- Plan tasks (if available): !{plan_tasks}
 
-## Initial Data Collection
-- PR metadata: !`gh pr view $ARGUMENTS --json number,title,body,url,headRefName,baseRefName,additions,deletions,changedFiles`
-- Changed files list: !`gh pr diff $ARGUMENTS --name-only`
-- File statistics: !`gh pr diff $ARGUMENTS`
+## Full PR Diff
+!{pr_diff}
 
 ## Comprehensive Review Strategy
 
@@ -228,6 +245,8 @@ Collect all findings from sub-agents and produce:
 - Total lines changed: +Y -Z
 - Critical issues found: N
 - Risk level: [LOW/MEDIUM/HIGH/CRITICAL]
+- Spec compliance: [PASS/FAIL with requirement IDs]
+- Test coverage meets spec: [YES/NO - target vs actual]
 
 ## Critical Issues (Must Fix)
 [Issues that block merge, grouped by type]
@@ -276,8 +295,13 @@ Each sub-agent receives:
 Review the following code diff for file(s): [files]
 PR Context: [title, description, acceptance criteria]
 
-FIRST: Check for project-specific architecture docs (ARCHITECTURE.md, ADRs, CONTRIBUTING.md, docs/plan.md etc.)
-and incorporate any project-specific constraints or patterns into your review.
+FIRST: Check for project-specific docs and requirements:
+- .claude/spec.md - Verify implementation matches functional/non-functional requirements
+- .claude/spec-state.json - Apply project-specific review criteria
+- .claude/plan.md - Verify task completion and dependencies
+- .claude/ADRs/*.md - Check architectural decisions
+- ARCHITECTURE.md, CONTRIBUTING.md - Apply project conventions
+Incorporate all project-specific constraints and patterns into your review.
 
 Then perform ALL of these checks and report findings with specific line numbers:
 
@@ -304,6 +328,7 @@ Output format:
 4. Wait for all agents to complete
 5. Aggregate findings and generate comprehensive report
 6. Present actionable recommendations with specific fixes
+7. Post your final review as a comment under the PR you are reviewing
 
 This approach ensures:
 - **Complete coverage**: Every line is reviewed

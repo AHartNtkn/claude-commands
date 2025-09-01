@@ -1,9 +1,37 @@
-You already have the **spec**. Follow these steps exactly. Do not invent content. Do not choose among alternatives. Do not produce a schedule/timeline. Your job is to extract and organize, then iterate by asking one question at a time and applying **minimal** edits to the plan.
+---
+context-commands:
+  - name: spec_location
+    command: '[ -f .claude/spec.md ] && echo ".claude/spec.md" || ([ -f spec.md ] && echo "spec.md" || echo "NOT_FOUND")'
+  - name: spec_content
+    command: '[ -f .claude/spec.md ] && cat .claude/spec.md || ([ -f spec.md ] && cat spec.md || echo "No spec found")'
+  - name: spec_state
+    command: '[ -f .claude/spec-state.json ] && cat .claude/spec-state.json || echo "{}"'
+  - name: parent_issue
+    command: '[ -f .claude/spec-state.json ] && jq -r ".meta.github_issue // empty" .claude/spec-state.json || echo ""'
+  - name: setup_claude_dir
+    command: 'mkdir -p .claude && echo "Directory ready"'
+---
+
+## Initial Context
+- Spec location: !{spec_location}
+- Parent issue from spec: !{parent_issue}
+- Claude directory: !{setup_claude_dir}
+
+## Spec Content
+!{spec_content}
+
+## Spec State Data
+!{spec_state}
+
+If spec location is "NOT_FOUND", inform the user: "No spec found. Please run `/spec` first to create one."
+
+Otherwise, proceed with the spec from the location above. Follow these steps exactly. Do not invent content. Do not choose among alternatives. Do not produce a schedule/timeline. Your job is to extract and organize, then iterate by asking one question at a time and applying **minimal** edits to the plan.
 
 **0) Output target**
 
-* Maintain a single Markdown file named `plan.md`.
-* After every iteration, overwrite `plan.md` with the updated content and bump a version number.
+* Maintain a single Markdown file named `.claude/plan.md` (create `.claude` directory if it doesn't exist).
+* After every iteration, overwrite `.claude/plan.md` with the updated content and bump a version number.
+* Create GitHub issues immediately as tasks are defined.
 * Outside the file, ask **exactly one** question to the user, then wait for the reply before the next iteration.
 
 **1) Initial parsing (from the spec only)**
@@ -14,18 +42,22 @@ You already have the **spec**. Follow these steps exactly. Do not invent content
 1.5 If the spec lacks requirement IDs, synthesize stable **Req-IDs** from location anchors, e.g., `REQ[S3.2-p4]` (section 3.2, paragraph 4). Do not alter wording.
 
 **2) Work Breakdown Structure (deliverable‑oriented)**
-2.1 Build a hierarchical WBS that satisfies **the 100% rule** (every parent’s children sum to exactly that parent’s scope; no overlap).
+2.1 Build a hierarchical WBS that satisfies **the 100% rule** (every parent's children sum to exactly that parent's scope; no overlap).
 2.2 Decompose until each leaf is a **work package** small enough to be reasonably completed in **\~8–80 person‑hours**; if uncertain, keep as an open question and do **not** guess.
-2.3 Name WBS nodes as outcomes/artifacts (e.g., “Parser module implemented” / “API contract defined”)—never action verbs alone.
+2.3 Name WBS nodes as outcomes/artifacts (e.g., "Parser module implemented" / "API contract defined")—never action verbs alone.
 2.4 Assign each node a stable ID `T-XXX` (zero‑padded).
+2.5 For each new task `T-XXX`:
+   * Create GitHub issue immediately: `gh issue create --title "T-XXX: {Title}" --body "{Details}"`
+   * Capture the issue number
+   * If task has prerequisites, use `gh sub-issue add` to link to parent tasks
 
 **3) For every work package (leaf `T-XXX`) record structured fields**
 
-* **\[ ] T-XXX Title** (concise, outcome‑oriented).
+* **\[ ] T-XXX Title** (concise, outcome‑oriented) **[Issue #NNN]**
 * **Spec Refs:** list of `REQ[...]` or section anchors.
 * **Prerequisites:** list of `T-YYY` and/or `Q-ZZZ` this task depends on.
 * **Artifacts to produce:** code modules, configs, migrations, docs, tests, data, etc., as dictated by the spec (no invention).
-* **Acceptance Criteria (DoD):** measurable, **testable** conditions traceable to spec (e.g., “Given/When/Then” or bullet checks).
+* **Acceptance Criteria (DoD):** measurable, **testable** conditions traceable to spec (e.g., "Given/When/Then" or bullet checks).
 * **Risks & Assumptions:** only if explicitly present in the spec; otherwise, do not include this line.
 
 **4) Traceability (prove coverage)**
@@ -44,10 +76,11 @@ You already have the **spec**. Follow these steps exactly. Do not invent content
 * Include **Rationale**: which requirements/tasks are blocked and why.
   6.2 Insert each `Q-ZZZ` **inline** under the affected parent task(s) **and** list all open questions in a top “Open Questions” section.
 
-**7) File format of `plan.md`**
+**7) File format of `.claude/plan.md`**
 
 * `# Plan (vX.Y)`
 
+  * **Parent Issue:** `#NNN` (if this plan is for a specific parent issue).
   * **Change Log** (reverse‑chronological; each entry lists what changed and which IDs were touched).
   * **Scope & Deliverables** (with spec citations).
   * **Constraints & NFRs** (with spec citations).
@@ -55,16 +88,22 @@ You already have the **spec**. Follow these steps exactly. Do not invent content
   * **Open Questions** (each `Q-ZZZ`: text, options if any, rationale, blocked IDs).
   * **Traceability Matrix** (Requirement → `T-XXX` links and vice versa).
   * **Hierarchical TODO (WBS)** using Markdown checkboxes; children are nested under prerequisites.
+  * **Issue Mapping:** `T-XXX` → GitHub Issue # (maintained as tasks are created).
 * Use two‑space indentation per level.
-* Never remove IDs once issued; deprecate by marking “Superseded by …” in the Change Log.
+* Never remove IDs once issued; deprecate by marking "Superseded by …" in the Change Log.
 
 **8) Iterative refinement protocol (strict)**
-8.1 **Initial iteration**: produce `plan.md` v0.1 with all sections populated and **questions written directly in the plan** where decisions are needed.
+8.1 **Initial iteration**: 
+   * Create `.claude` directory if needed: `mkdir -p .claude`
+   * Produce `.claude/plan.md` v0.1 with all sections populated
+   * Create GitHub issues for any initial tasks defined
+   * Write **questions directly in the plan** where decisions are needed.
 8.2 **Select one question to ask**: choose the open `Q-ZZZ` that **unblocks the largest number of dependent tasks** (ties → pick the one closest to the root by WBS depth, then lowest ID).
-8.3 **Ask the user exactly one question** (verbatim from `plan.md`). Do not add commentary.
+8.3 **Ask the user exactly one question** (verbatim from `.claude/plan.md`). Do not add commentary.
 8.4 **On user reply**:
 
-* Apply **minimal edits only** to `plan.md`. Do **not** rewrite or reorder unaffected sections.
+* Apply **minimal edits only** to `.claude/plan.md`. Do **not** rewrite or reorder unaffected sections.
+* If new tasks are created: immediately create GitHub issues and establish sub-issue relationships
 * Update impacted tasks/questions, possibly add new questions uncovered by the answer.
 * Bump version (v0.2, v0.3, …) and append a precise Change Log entry listing touched IDs and the reason.
 * Repeat 8.2–8.4 until **no open questions remain**.
@@ -78,5 +117,17 @@ You already have the **spec**. Follow these steps exactly. Do not invent content
 * Do not discard or renumber existing IDs.
 * Do not refactor the whole `plan.md`; only targeted, minimal edits per iteration.
 
-Begin now with the **Initial iteration**: create `plan.md` v0.1 per §§1–7, then proceed with §8.2.
+**10) GitHub Issue Management**
+* Parent issue from spec: Already available as !{parent_issue} from context
+* When creating a new task `T-XXX`:
+  1. Create issue: `gh issue create --title "T-XXX: {Title}" --body "{spec refs, artifacts, acceptance criteria}"`
+  2. Capture issue number from output
+  3. Update task in plan with `[Issue #NNN]`
+  4. If task has prerequisite tasks with issues, link them:
+     `gh sub-issue add PARENT_ISSUE_NUM CHILD_ISSUE_NUM`
+  5. If parent spec issue exists, link task as sub-issue:
+     `gh sub-issue add $PARENT_ISSUE TASK_ISSUE_NUM`
+* Maintain bidirectional traceability in `.claude/plan.md`
+
+Begin now with the **Initial iteration**: create `.claude/plan.md` v0.1 per §§1–7, then proceed with §8.2.
 

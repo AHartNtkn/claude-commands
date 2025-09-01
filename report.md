@@ -1,1 +1,0 @@
-Please write a short report on the current issue. I will be submiting it to a group that will come up with a solution proposal. Make sure it has all the needed context and an accurate description of the expected behaviour including my direct requests.

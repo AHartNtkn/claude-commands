@@ -1,0 +1,7 @@
+Please look at the most recent comment under the PR you are working on.
+
+Keep in mind, this is a review, NOT a command. Following their advice verbatim may be stupid. They are just here to draw your attention toward areas of potential improvement. Use your best judgement to find and execute the actual right thing to do.
+
+Make a plan to address the issues pointed out. Consider if they are valid issues or if they can be ignored. All valid problems highlighted in the refiew should be fixed at some point. If something is better left as future work, look through plan.md and add it as a task, if it's not one already. If it's "minor", don't ignore it. It must be fixed eventually; if not now, then when? Justify every choice. Don't just say "do this later". Justify why, by the repo standards, each thing you claim should be a separate task should be pushed off instead of addressed in the current PR. In particular, if making it a new task would mean having an intermediate version with broken functionality, then it CANNOT be put off and MUST BE DONE NOW!!!
+
+For reccomendations that are invalid, there's clearly some kind of misunderstanding, either by you or the reviewer. Review the archetecture standandards and reassess if it is actually invalid. If it is, even after your reconsideration, then there's confusion that future reviewers need to avoid. Add comments where reviewers thinking about this issue will see them.
