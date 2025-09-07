@@ -1,5 +1,5 @@
 ---
-allowed-tools: Edit, Bash(test*), Bash(git fetch:*), Bash(git checkout:*), Bash(git pull:*), Bash(git rebase:*), Bash(git branch:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Bash(git remote:*), Bash(git symbolic-ref:*), Bash(git status:*), Bash(git grep:*), Bash(gh issue view:*), Bash(gh sub-issue:*), Bash(gh pr list:*), Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr ready:*), Bash(npm *), Bash(pnpm *), Bash(yarn *), Bash(python *), Bash(pytest*), Bash(go test*), Bash(cargo test*), Bash(pre-commit *), Bash(jq *)
+allowed-tools: Edit, Read, Bash(test*), Bash(git fetch:*), Bash(git checkout:*), Bash(git pull:*), Bash(git rebase:*), Bash(git branch:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Bash(git remote:*), Bash(git symbolic-ref:*), Bash(git status:*), Bash(git grep:*), Bash(gh issue view:*), Bash(gh issue edit:*), Bash(gh sub-issue:*), Bash(gh pr list:*), Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr ready:*), Bash(npm *), Bash(pnpm *), Bash(yarn *), Bash(python *), Bash(pytest*), Bash(go test*), Bash(cargo test*), Bash(pre-commit *), Bash(jq *)
 argument-hint: [ISSUE_NUMBER]
 description: Implement a GitHub issue via strict Red→Green→Refactor TDD, small commits, and open a PR.
 model: claude-sonnet-4-20250514
@@ -115,6 +115,31 @@ Implement the feature in issue #\$ARGUMENTS with test-driven development (tests 
    - Review criteria that will be used for the PR
 5. Save context summary to `.gh_context.md` for reference during implementation
 
+### 2.5) Consult development plan
+1. Read `.claude/plan.md` using Read tool
+2. Locate this task (T-XXX) in the plan and review:
+   - Prerequisites and dependencies  
+   - Acceptance criteria specific to this task
+   - Any architectural constraints or decisions
+3. Verify all prerequisite tasks are completed
+4. Check if any dependencies are marked as open questions (Q-XXX) - if so, stop and inform user these must be resolved first
+5. If plan doesn't exist, stop with error: "No development plan found. Run `/plan` first."
+
+### 2.6) Task scope validation
+Analyze if this task is appropriately scoped for a single PR:
+- Acceptance criteria complexity - can this be implemented in <500 LOC changes?
+- Multiple major components involved - does this span too many systems?
+- Significant architectural changes required - is this really multiple tasks?
+
+If task appears too large for a single PR:
+1. Read current plan.md using Read tool
+2. Break down task into logical implementation steps that collectively complete the parent task
+3. Add new T-XXX sub-tasks to plan's WBS section with proper hierarchy
+4. Create GitHub issues for new sub-tasks immediately
+5. Update plan version and add changelog entry
+6. Write updated plan.md using Edit tool
+7. Stop implementation and inform user: "Task broken down into sub-tasks - see updated plan"
+
 ### 3) Create feature branch
 1. Compute a slug from the issue title:  
    `SLUG="$(gh issue view "$ARGUMENTS" --json title --jq '.title' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g;s/^-+|-+$//g' | cut -c1-50)"`
@@ -135,48 +160,91 @@ Detection order:
   - `git fetch origin && git rebase origin/"$DEFAULT_BRANCH"`
   - Re-run `$TEST_CMD`. If still failing and unrelated, open a **draft PR** with failing logs attached and pause implementation.
 
-### 6) TDD working rules (hard constraints)
+### 6) Implementation approach analysis
+Before starting TDD, thoroughly analyze this specific task and plan any needed updates:
+
+1. **Analyze implementation approach for each acceptance criterion:**
+   - What technical approach will you take to implement each one?
+   - What components, modules, or systems need to be created or modified?
+   - What are the key implementation challenges or complexities?
+
+2. **Identify specific architectural decisions required:**
+   - What technical choices need to be made that aren't specified in the plan/spec?
+   - What are the viable alternatives and their trade-offs?
+   - What design patterns, frameworks, or approaches need to be chosen?
+
+3. **Check for missing dependencies:**
+   - What prerequisites or foundation work is needed that isn't in the current plan?
+   - What other tasks should be completed before this one can succeed?
+
+4. **Update plan.md if needed:**
+   - Read current plan.md using Read tool
+   - Add missing T-XXX prerequisite tasks with GitHub issues
+   - Add Q-XXX questions for architectural decisions requiring user choice
+   - Follow exact plan versioning: bump version, add changelog entry
+   - Write updated plan.md using Edit tool
+   
+5. **If architectural questions added:** Stop and inform user "Architectural questions added to plan - run `/plan` to continue"
+
+### 7) TDD working rules (hard constraints)
 - Strict **Red → Green → Refactor**; **one** acceptance-criterion (or sub-behavior) at a time.
 - Keep commits small: aim ≤ ~200 changed LOC and ≤ ~5 files per commit. Split if exceeded.
 - Tests **deterministic and hermetic**: no real network/time/fs; inject clocks/seeds; use fakes/stubs/mocks.
 - Prefer unit tests first (test pyramid); add integration/E2E only to cover behavior seams.
 - After each cycle: run targeted tests, then periodically the full suite.
+### 8) Plan update procedure (used by TDD loop)
+When plan updates are needed during implementation:
+1. Read current plan.md using Read tool
+2. Add missing T-XXX tasks or Q-XXX questions as appropriate
+3. Update plan version and add changelog entry explaining the addition
+4. Write updated plan.md using Edit tool
+5. Create GitHub issues for any new T-XXX tasks immediately
+6. Stop and inform user: "Plan updated - run `/plan` to continue" or "Questions added - run `/plan` to continue"
 
-### 7) TDD loop (repeat per acceptance criterion)
+### 9) TDD loop (repeat per acceptance criterion)
 **RED**
-1. Add the smallest failing test that demonstrates the desired behavior. Ensure the runner discovers it by filename/pattern.
-2. Prove the test fails for the right reason: run `$TEST_CMD`.
-3. Commit **only the test**:  
-   - Stage precisely the test files.  
+1. Select next acceptance criterion to implement
+2. **Pre-flight check**: Can you write a meaningful test for this behavior?
+   - If foundational work is missing → Use plan update procedure and stop
+   - If architectural choice needed → Use plan update procedure and stop
+   - If clear what to test → proceed
+3. Write smallest failing test that demonstrates the desired behavior
+4. Verify test fails for the right reason: run `$TEST_CMD`
+5. Commit **only the test**:
+   - Stage precisely the test files
    - `git commit -m "test(#$ARGUMENTS): <short behavior>"`
 
 **GREEN**
-4. Implement the **minimal** production code to pass the new test.
-5. Run `$TEST_CMD` until green.
-6. Commit implementation:  
+6. **Implementation check**: Is the approach to make this test pass clear?
+   - If missing foundation work → Use plan update procedure and stop
+   - If multiple approaches with significant trade-offs → Use plan update procedure and stop
+   - If straightforward → proceed
+7. Write minimal code to pass the test
+8. Run `$TEST_CMD` until green
+9. Commit implementation:
    `git commit -a -m "feat(#$ARGUMENTS): <minimal implementation>"`
 
 **REFACTOR**
-7. Improve internals without changing behavior. Run formatters/linters if configured (e.g., `pre-commit run -a`).
-8. Run `$TEST_CMD`.
-9. Commit refactor:  
-   `git commit -a -m "refactor: <cleanup, no behavior change>"`
+10. Improve internals without changing behavior. Run formatters/linters if configured (e.g., `pre-commit run -a`).
+11. Run `$TEST_CMD`.
+12. Commit refactor:  
+    `git commit -a -m "refactor: <cleanup, no behavior change>"`
 
 **Housekeeping**
-10. Review staged diff before each commit: `git diff --staged`. If you need to adjust a prior commit, use fixups and autosquash:  
+13. Review staged diff before each commit: `git diff --staged`. If you need to adjust a prior commit, use fixups and autosquash:  
     - `git commit --fixup=<SHA>` then `git rebase --autosquash "$DEFAULT_BRANCH"`
 
-### 8) Draft PR early if spec is ambiguous (recommended)
+### 10) Draft PR early if spec is ambiguous (recommended)
 - Create a draft PR to get feedback after the first failing test commit if criteria are unclear:  
   `gh pr create --title "feat: $ARGUMENTS $SLUG" --body-file .gh_pr_body.md --draft`
 
-### 9) Final validation
+### 11) Final validation
 1. Ensure **all** new/affected tests pass: `$TEST_CMD`
 2. Run formatters/linters (respect repo tooling; e.g., `pre-commit run -a`).
 3. Rebase on latest default and re-run tests:  
    `git fetch origin && git rebase origin/"$DEFAULT_BRANCH" && $TEST_CMD`
 
-### 10) Create/update PR
+### 12) Create/update PR
 - If no PR exists:  
   `gh pr create --title "feat: $ARGUMENTS $SLUG" --body-file .gh_pr_body.md`
 - Ensure the PR body contains **Closes #$ARGUMENTS** and the acceptance-criteria checklist.
@@ -185,7 +253,7 @@ Detection order:
 - If previously draft, mark ready when CI is green:  
   `gh pr ready`
 
-### 11) Merge policy and post-merge
+### 13) Merge policy and post-merge
 - Do **not** merge unless every acceptance-criteria checkbox is ticked and tests are green.
 - If the repo uses squash-merge, ensure the PR title follows **Conventional Commits**.
 - After merge into the default branch, confirm the linked issue auto-closed. If not, update PR body with closing keyword and re-merge or push a new commit.
