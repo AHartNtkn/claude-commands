@@ -1,0 +1,135 @@
+{
+  "session_id": "session_001",
+  "student_id": "learner_001", 
+  "session_metadata": {
+    "start_time": "2024-01-15T10:00:00Z",
+    "end_time": null,
+    "duration_minutes": null,
+    "session_type": "ASSESSMENT",
+    "target_skills": ["skill_001", "skill_002"],
+    "completed": false
+  },
+  "activities": [
+    {
+      "activity_id": "act_001",
+      "activity_type": "DIAGNOSTIC_TEST",
+      "skill_id": "skill_001",
+      "start_time": "2024-01-15T10:00:00Z",
+      "end_time": "2024-01-15T10:15:00Z",
+      "items_attempted": 5,
+      "items_correct": 3,
+      "theta_estimate_before": 0.0,
+      "theta_estimate_after": -0.2,
+      "se_before": 1.0,
+      "se_after": 0.45,
+      "result": "UNREADY"
+    },
+    {
+      "activity_id": "act_002", 
+      "activity_type": "SKILL_DECOMPOSITION",
+      "skill_id": "skill_001",
+      "start_time": "2024-01-15T10:15:00Z",
+      "end_time": "2024-01-15T10:20:00Z",
+      "prerequisites_identified": ["skill_003", "skill_004"],
+      "added_to_stack": true
+    }
+  ],
+  "item_responses": [
+    {
+      "item_id": "item_q001",
+      "skill_id": "skill_001",
+      "response_time_seconds": 45,
+      "correct": true,
+      "confidence": 0.8,
+      "difficulty_parameter": 0.5,
+      "discrimination_parameter": 1.2,
+      "guessing_parameter": 0.25,
+      "theta_at_response": 0.0,
+      "expected_probability": 0.62,
+      "item_information": 0.45
+    },
+    {
+      "item_id": "item_q002",
+      "skill_id": "skill_001", 
+      "response_time_seconds": 120,
+      "correct": false,
+      "confidence": 0.4,
+      "difficulty_parameter": 1.0,
+      "discrimination_parameter": 1.5,
+      "guessing_parameter": 0.25,
+      "theta_at_response": 0.1,
+      "expected_probability": 0.35,
+      "item_information": 0.38
+    }
+  ],
+  "learning_events": [
+    {
+      "event_type": "SKILL_FAILED",
+      "skill_id": "skill_001",
+      "timestamp": "2024-01-15T10:15:00Z",
+      "details": {
+        "mastery_probability": 0.25,
+        "items_attempted": 5,
+        "accuracy": 0.6,
+        "confidence_accuracy": 0.7
+      }
+    },
+    {
+      "event_type": "PREREQUISITES_ADDED",
+      "skill_id": "skill_001", 
+      "timestamp": "2024-01-15T10:20:00Z",
+      "details": {
+        "prerequisites": ["skill_003", "skill_004"],
+        "stack_position": 0
+      }
+    }
+  ],
+  "performance_metrics": {
+    "overall_accuracy": 0.6,
+    "average_response_time": 82.5,
+    "confidence_accuracy": 0.7,
+    "calibration_score": 0.65,
+    "skills_attempted": 1,
+    "skills_mastered": 0,
+    "skills_failed": 1,
+    "items_attempted": 5,
+    "items_correct": 3
+  },
+  "adaptive_adjustments": [
+    {
+      "adjustment_type": "DIFFICULTY_DECREASE",
+      "reason": "Low initial performance",
+      "timestamp": "2024-01-15T10:10:00Z",
+      "parameters_changed": {
+        "difficulty_bias": -0.5
+      }
+    }
+  ],
+  "state_changes": {
+    "skills_state_before": {
+      "skill_001": "UNTESTED"
+    },
+    "skills_state_after": {
+      "skill_001": "UNREADY"
+    },
+    "mastery_boundary_before": [],
+    "mastery_boundary_after": [],
+    "stack_before": ["skill_001"],
+    "stack_after": ["skill_003", "skill_004", "skill_001"]
+  },
+  "session_analytics": {
+    "engagement_score": 0.8,
+    "frustration_indicators": ["long_response_times", "low_confidence"],
+    "flow_state_duration": 0,
+    "help_seeking_count": 0,
+    "break_requests": 1
+  },
+  "metadata": {
+    "device_info": "desktop",
+    "browser": "chrome",
+    "screen_resolution": "1920x1080",
+    "network_latency": 45,
+    "session_notes": "",
+    "technical_issues": []
+  }
+}

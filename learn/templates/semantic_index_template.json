@@ -1,0 +1,59 @@
+{
+  "embeddings_index": {
+    "skill_001": [0.1, -0.3, 0.8, 0.2, -0.5],
+    "skill_002": [0.2, -0.2, 0.7, 0.3, -0.4]
+  },
+  "keyword_index": {
+    "algebra": ["skill_001", "skill_003", "skill_007"],
+    "equation": ["skill_001", "skill_002"],
+    "solving": ["skill_001", "skill_002", "skill_004"],
+    "quadratic": ["skill_001"],
+    "formula": ["skill_001", "skill_005"]
+  },
+  "domain_clusters": {
+    "algebra": {
+      "skills": ["skill_001", "skill_002", "skill_003"],
+      "centroid": [0.15, -0.25, 0.75, 0.25, -0.45],
+      "coherence": 0.82
+    },
+    "geometry": {
+      "skills": ["skill_010", "skill_011", "skill_012"],
+      "centroid": [0.3, 0.1, -0.2, 0.6, 0.1],
+      "coherence": 0.78
+    },
+    "calculus": {
+      "skills": ["skill_020", "skill_021", "skill_022"],
+      "centroid": [-0.1, 0.4, 0.2, -0.3, 0.7],
+      "coherence": 0.85
+    }
+  },
+  "similarity_cache": {
+    "skill_001_vs_skill_002": {
+      "cosine_similarity": 0.87,
+      "keyword_overlap": 0.6,
+      "domain_match": true,
+      "computed_at": "2024-01-15T10:00:00Z"
+    }
+  },
+  "action_verb_index": {
+    "solve": ["skill_001", "skill_002", "skill_004"],
+    "compute": ["skill_005", "skill_006"],
+    "analyze": ["skill_007", "skill_008"],
+    "apply": ["skill_001", "skill_003", "skill_009"],
+    "evaluate": ["skill_010", "skill_011"]
+  },
+  "cognitive_level_index": {
+    "remember": ["skill_001", "skill_002"],
+    "understand": ["skill_003", "skill_004"],
+    "apply": ["skill_005", "skill_006"],
+    "analyze": ["skill_007", "skill_008"],
+    "evaluate": ["skill_009", "skill_010"],
+    "create": ["skill_011", "skill_012"]
+  },
+  "metadata": {
+    "total_skills": 12,
+    "last_updated": "2024-01-15T10:00:00Z",
+    "embedding_dimension": 5,
+    "index_version": "1.0"
+  }
+}

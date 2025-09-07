@@ -1,0 +1,61 @@
+{
+  "student_id": "learner_001",
+  "profile": {
+    "name": null,
+    "learning_style": null,
+    "preferred_difficulty": "moderate",
+    "session_duration_preference": 30
+  },
+  "global_metrics": {
+    "global_theta": 0.0,
+    "global_se": 1.0,
+    "calibration_accuracy": null,
+    "confidence_bias": 0.0,
+    "response_time_factor": 1.0
+  },
+  "skill_estimates": {
+    "skill_001": {
+      "theta": 0.0,
+      "se": 1.0,
+      "mastery_probability": 0.0,
+      "last_updated": null
+    }
+  },
+  "mastery_boundary": [],
+  "learning_history": {
+    "sessions_completed": 0,
+    "total_learning_time_minutes": 0,
+    "skills_mastered": 0,
+    "skills_attempted": 0,
+    "total_items_attempted": 0,
+    "total_items_correct": 0
+  },
+  "spacing_schedule": {
+    "skill_001": {
+      "next_review": null,
+      "interval_days": 1,
+      "review_count": 0,
+      "last_performance": null
+    }
+  },
+  "session_analytics": {
+    "avg_session_duration": 0,
+    "completion_rate": 0.0,
+    "dropout_patterns": [],
+    "peak_performance_times": [],
+    "struggle_indicators": []
+  },
+  "personalization": {
+    "preferred_example_types": [],
+    "effective_feedback_styles": [],
+    "motivation_triggers": [],
+    "common_misconceptions": []
+  },
+  "metadata": {
+    "created": "2024-01-15T10:00:00Z",
+    "last_active": null,
+    "total_sessions": 0,
+    "learning_streak_days": 0,
+    "longest_streak": 0
+  }
+}

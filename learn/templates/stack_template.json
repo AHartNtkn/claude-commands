@@ -1,0 +1,55 @@
+{
+  "stack": [
+    "skill_001",
+    "skill_002", 
+    "skill_003"
+  ],
+  "processed": [
+    "skill_010",
+    "skill_011"
+  ],
+  "current_focus": "skill_001",
+  "processing_history": [
+    {
+      "skill_id": "skill_010",
+      "action": "ASSESSED",
+      "result": "MASTERED",
+      "timestamp": "2024-01-15T09:30:00Z",
+      "session_id": "session_001"
+    },
+    {
+      "skill_id": "skill_011", 
+      "action": "TAUGHT",
+      "result": "MASTERED",
+      "timestamp": "2024-01-15T09:45:00Z",
+      "session_id": "session_001"
+    }
+  ],
+  "failed_skills": {
+    "skill_005": {
+      "fail_count": 2,
+      "last_failed": "2024-01-15T09:15:00Z",
+      "prerequisite_gaps": ["skill_006", "skill_007"],
+      "next_attempt_after": "2024-01-20T09:15:00Z"
+    }
+  },
+  "stack_metrics": {
+    "total_pushes": 15,
+    "total_pops": 12,
+    "average_stack_depth": 3.2,
+    "max_stack_depth": 8,
+    "skills_decomposed": 5
+  },
+  "session_context": {
+    "current_session_id": "session_002",
+    "session_start": "2024-01-15T10:00:00Z", 
+    "skills_processed_this_session": ["skill_001"],
+    "target_skills_remaining": ["skill_001", "skill_002"],
+    "estimated_completion_time": 45
+  },
+  "metadata": {
+    "created": "2024-01-15T08:00:00Z",
+    "last_modified": "2024-01-15T10:00:00Z",
+    "stack_version": "1.0"
+  }
+}

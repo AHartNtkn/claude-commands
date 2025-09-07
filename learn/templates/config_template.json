@@ -1,0 +1,104 @@
+{
+  "mastery_criteria": {
+    "threshold": 0.85,
+    "successive_relearning_sessions": 2,
+    "spacing_intervals_days": [1, 3, 7, 14, 30],
+    "min_mastery_probability": 0.90,
+    "confidence_threshold": 0.80
+  },
+  "assessment": {
+    "cat": {
+      "precision_target": 0.30,
+      "max_items_per_assessment": 12,
+      "min_items_per_assessment": 3,
+      "starting_theta": 0.0,
+      "item_selection_method": "MFI",
+      "exposure_control": "GMIR",
+      "max_exposure_rate": 0.30
+    },
+    "irt": {
+      "model": "3PL",
+      "estimation_method": "ML",
+      "convergence_criteria": 0.01,
+      "max_iterations": 50
+    },
+    "bkt": {
+      "prior_knowledge": 0.1,
+      "learning_rate": 0.3,
+      "slip_rate": 0.1,
+      "guess_rate": 0.25
+    }
+  },
+  "teaching": {
+    "worked_examples": {
+      "trivial_count": 1,
+      "easy_count": 1,
+      "realistic_count": 1,
+      "include_solutions": true,
+      "include_explanations": true
+    },
+    "practice_problems": {
+      "trivial_count": 2,
+      "easy_count": 2,
+      "realistic_count": 2,
+      "immediate_feedback": true,
+      "adaptive_difficulty": true
+    },
+    "cognitive_load": {
+      "max_element_interactivity": 7,
+      "use_worked_examples": true,
+      "fade_guidance": true,
+      "split_attention_prevention": true
+    }
+  },
+  "scheduling": {
+    "session_duration_minutes": 30,
+    "break_frequency_minutes": 10,
+    "max_consecutive_failures": 3,
+    "interleaving_threshold": 0.80,
+    "spacing_algorithm": "SM2",
+    "forgetting_curve_model": "exponential"
+  },
+  "personalization": {
+    "adapt_difficulty": true,
+    "adapt_pacing": true,
+    "adapt_examples": true,
+    "track_confidence": true,
+    "calibration_training": true
+  },
+  "user_interface": {
+    "show_progress_bar": true,
+    "show_mastery_boundary": true,
+    "show_dag_visualization": true,
+    "immediate_feedback": true,
+    "confidence_collection": true
+  },
+  "data_collection": {
+    "response_times": true,
+    "confidence_ratings": true,
+    "help_seeking_behavior": true,
+    "eye_tracking": false,
+    "physiological_measures": false
+  },
+  "quality_assurance": {
+    "item_review_required": true,
+    "expert_validation": true,
+    "statistical_flagging": true,
+    "bias_detection": true
+  },
+  "system": {
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "embedding_dimension": 384,
+    "similarity_threshold": 0.85,
+    "cache_embeddings": true,
+    "max_cache_size_mb": 100,
+    "backup_frequency_hours": 24,
+    "log_level": "INFO"
+  },
+  "metadata": {
+    "config_version": "1.0",
+    "created": "2024-01-15T10:00:00Z",
+    "last_modified": "2024-01-15T10:00:00Z",
+    "research_basis": "Bloom_1984_Mastery_Learning, Keller_1968_PSI, Corbett_Anderson_1995_Knowledge_Tracing"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "skill_001": {
+    "title": "Example Skill Title",
+    "canonical_id": "skill_001",
+    "aliases": ["Alternative name 1", "Alternative name 2"],
+    "description": "Concrete description of what the student can DO after mastering this skill",
+    "semantic_fingerprint": {
+      "keywords": ["keyword1", "keyword2", "keyword3"],
+      "action_verbs": ["solve", "compute", "analyze"],
+      "domain_tags": ["algebra", "geometry", "calculus"],
+      "cognitive_level": "apply",
+      "embedding": []
+    },
+    "merged_from": [],
+    "state": "UNTESTED",
+    "prerequisites": ["skill_002", "skill_003"],
+    "dependents": ["skill_004", "skill_005"],
+    "mastery_data": {
+      "theta_estimate": 0.0,
+      "theta_se": 1.0,
+      "mastery_probability": 0.0,
+      "last_assessed": null,
+      "assessment_count": 0,
+      "successive_passes": 0
+    },
+    "item_bank": {
+      "trivial": [],
+      "easy": [], 
+      "realistic": []
+    },
+    "teaching_materials": {
+      "explanation": null,
+      "worked_examples": [],
+      "common_mistakes": [],
+      "practice_problems": []
+    },
+    "metadata": {
+      "created": "2024-01-15T10:00:00Z",
+      "last_modified": "2024-01-15T10:00:00Z",
+      "created_by": "system",
+      "difficulty_rating": 5,
+      "estimated_time_minutes": 30
+    }
+  }
+}
