@@ -8,318 +8,351 @@ The LLM is NOT a reliable long-term memory store. It is a transformation engine 
 3. Writes updated state back to files
 4. Exits
 
-All context necessary for progress MUST be externalized to files. The LLM's role is to handle tasks that cannot be automated with traditional scripts - those requiring natural language understanding, creative decomposition, or fuzzy pattern matching.
+All context necessary for progress MUST be externalized to files. The LLM's role is to handle tasks that cannot be automated with traditional scripts - those requiring natural language understanding, creative decomposition, or fuzzy pattern matching. Mechanical, algorithmic operations should be delegated to scripts that the LLM invokes.
 
-## Key Design Principles
+Commands must account for the LLM's tendency to optimize and take shortcuts. Explicit anti-patterns, violation detection, and progress tracking requirements are essential to ensure compliance with the intended algorithm.
+
+## The 15 Core Principles
 
 1. **State in files, not memory** - The LLM reads, transforms, writes, exits
 2. **Atomic operations** - One thing per invocation
 3. **Explicit marking** - Visible state drives control flow
 4. **Measurement over judgment** - Numeric thresholds, not subjective decisions
 5. **Failure leads to decomposition** - Don't retry, break down
-6. **Immutable IDs** - Once created, never changed
-7. **State machines** - Explicit states with clear transitions
-8. **Session-based processing** - Atomic, resumable work units
+6. **State field pattern** - State belongs in explicit fields, not embedded in data
+7. **Immutable IDs** - Once created, never changed
+8. **State machines** - Explicit states with clear transitions
+9. **Session-based processing** - Atomic, resumable work units
+10. **Algorithmic iteration** - Process items one at a time using explicit search-modify-repeat loops
+11. **Discovery over extraction** - Complex information emerges during analysis, not upfront
+12. **Script delegation** - Mechanical operations belong in scripts, not AI loops
+13. **Command decomposition** - Complex workflows split into focused, single-purpose commands
+14. **Fresh agent per iteration** - For loops without memory needs, use sequential fresh sub-agents
+15. **Use proper tools over bash commands** - When a tool exists (Grep, Read, etc.), use it instead of bash equivalents
 
 ## Detailed Principles
 
-### 1. State Externalization
+### 1. State Management
+Combines: State externalization, State fields, Immutable IDs, State machines
 
-**Principle:** Everything lives in files, not in the LLM's context
+**Core concept:** All state lives in files with explicit fields and clear transitions.
 
-**What this means:**
-- Current state: where we are in any process
-- Pending work: what still needs to be done
-- History: what has been done and when
-- Relationships: how different pieces connect
-- Decisions: what choices have been made or need to be made
+**Implementation:**
+- Store state in dedicated JSON/Markdown files
+- Use explicit `status` or `state` fields (never embed in titles/names)
+- IDs never change once created (T-001 remains T-001 forever)
+- Define state machines with clear transitions
 
-**Examples:**
-- `spec-state.json` - structured specification state
-- `plan.md` versions - v0.1, v0.2, tracking each iteration
-- `.walkthrough-state.json` - current chunk, visited chunks, session data
-- `skills.json` - skill states and relationships
-- GitHub issues - external state for task tracking
+**Example state machine:**
+```
+States: ready → blocked → analyzed → complete
+Transitions:
+- ready→blocked: dependency added
+- blocked→ready: dependency resolved  
+- ready→analyzed: analysis complete
+- any→obsolete: superseded
+```
 
-### 2. Atomic Operations
+**File examples:**
+```json
+{
+  "T-001": {
+    "title": "Implement auth",
+    "status": "ready",  // Explicit state field
+    "id": "T-001"        // Immutable
+  }
+}
+```
 
-**Principle:** Each LLM invocation does exactly ONE thing
+### 2. Processing Patterns
+Combines: Atomic operations, Session-based processing, Algorithmic iteration, Fresh agent per iteration
 
-**What this means:**
-- Single transformation per call
-- Clear input → process → output
-- No bundled operations
-- Each step verifiable
+**Core concept:** Process one thing completely before moving to next.
 
-**Examples:**
+**Sequential fresh sub-agents pattern:**
+```bash
+# Build queue of all items upfront
+grep "pattern" file > queue.txt
 
-Bad:
-- "Identify tasks that need decomposition and decompose them"
-- "Answer the question and update all affected tasks"
+# Process with fresh sub-agent per item
+while read -r item; do
+  Launch Task sub-agent: "Process item $item"
+  Wait for completion
+done < queue.txt
+```
 
-Good:
-- "Answer question Q-001"
-- "Decompose task T-005"
-- "Mark T-005 as needing decomposition"
+**Why use sub-agents:**
+- Each iteration gets fresh context (no fatigue)
+- Sub-agent sees only one item (cannot batch)
+- Main agent just dispatches (no analysis work)
 
-Enforcement in commands:
-- `/spec` - one question per turn
-- `/plan` - one Q-XXX per iteration
-- `/implement` - one test, then one implementation, then one refactor
+**Session pattern:**
+- Each operation creates timestamped session file
+- Contains complete input/output/decisions
+- Enables resumption and audit
 
-### 3. File-Driven Control Flow
+### 3. Control Flow
+Combines: File-driven flow, Explicit marking, Measurement, Failure handling
 
-**Principle:** Files determine what happens next, not LLM memory
+**Core concept:** Files determine next action, not memory.
 
-**What this means:**
-- Next action determined by file state
-- No implicit "remember to do X"
-- Explicit markers for pending work
-- Algorithmic progression
+**Implementation:**
+- Check file state to determine next action
+- Use markers for pending work: `needs_review: true`
+- Numeric thresholds for decisions: `complexity > 10 → decompose`
+- When something fails, decompose rather than retry
 
-**Examples:**
+**Example:**
+```javascript
+// File-driven control
+if (grep("Status: ready", "plan.md")) {
+  // Process ready tasks
+} else if (grep('"status": "open"', "questions.json")) {
+  // Handle open questions  
+}
+```
 
-State-driven actions:
-- Is there an open Q-XXX? → Ask it
-- Task marked "(ready for analysis)"? → Analyze it
-- current_chunk < total_chunks? → Continue walkthrough
+### 4. Advanced Patterns
 
-Never memory-driven:
-- ❌ "Remember to check task T-005 after answering Q-003"
-- ✅ Mark T-005 with "blocked_by: Q-003", then scan for this marker later
+#### Discovery Over Extraction
+Don't try to identify all questions/issues upfront. Let them emerge during analysis:
+- Questions arise when analyzing specific tasks
+- Complexity discovered during implementation planning
+- Dependencies revealed through decomposition
+- Technical decisions become apparent during detailed analysis
 
-### 4. Measurement-Based Decisions
+**Important:** Overly narrow criteria (e.g., "significant architectural decisions") will miss important choices. Many implementation decisions don't seem "architectural" but still need consistent resolution across the codebase.
 
-**Principle:** All decisions based on numeric thresholds, not subjective judgment
+#### Script Delegation  
+When AI is doing mechanical loops, extract to a script:
 
-**What this means:**
-- Every decision has a measurable criterion
-- Thresholds are explicit and documented
-- No "seems like" or "probably"
-- Formulas and constants visible in files
+**Signs you need a script:**
+- Repetitive operations
+- No natural language understanding required
+- Deterministic transformation rules
 
-**Examples:**
-- Mastery: probability ≥ 0.85 (from Bloom's research)
-- Decomposition: estimated LOC > 500
-- Precision: SE(θ) < 0.30 for statistical significance
-- Review timing: calculated from forgetting curve formula
-- Complexity: cyclomatic complexity > 10 triggers refactor
+**Example:** Creating 50 GitHub issues
+- **Bad:** AI loops creating issues one by one
+- **Good:** AI creates structured plan.md, script processes it
 
-Never:
-- "Check if this seems too complex"
-- "Decide if the student understands"
+#### Sequential Fresh Sub-Agents
+When processing multiple items that don't need memory between them:
 
-Always:
-- "If complexity_score > 10, decompose"
-- "If mastery_probability ≥ 0.85, mark MASTERED"
+**When to use:**
+- Processing all ready tasks for analysis
+- Answering multiple open questions
+- Any loop where iterations are independent
 
-### 5. Explicit Marking and Tracking
+**Implementation:**
+```bash
+# Queue all work upfront
+grep "Status: ready" plan.md > tasks.txt
 
-**Principle:** If something needs attention, mark it visibly in the file
+# Process sequentially with fresh agents
+while read -r task; do
+  Task tool: "Analyze task $task"
+  # Wait for completion before next
+done < tasks.txt
+```
 
-**What this means:**
-- States and needs are visible markers
-- Procedures scan for markers mechanically
-- Process and remove markers atomically
-- No hidden state or implicit tracking
+**Why sequential (not parallel):**
+- Avoids file conflicts (plan.md, questions.json)
+- Prevents ID collisions (each agent sees updated state)
+- Ensures correct dependency tracking
 
-**Examples:**
-- Task titles: "T-005: Implement auth (ready for analysis)"
-- Status fields: `"state": "NEEDS_REVIEW"`
-- Dependencies: `"blocked_by": ["Q-001", "Q-003"]`
-- Markers: `"needs_decomposition": true`
+**When sequential is MANDATORY (not just preferred):**
+- Shared state modifications (IDs, counters, indexes)
+- File sections that could conflict
+- Any resource that doesn't handle concurrent access
 
-The procedure becomes mechanical:
-1. Find all items with marker X
-2. Process each one
-3. Remove marker X
+**Enforcement techniques:**
+- Require explicit progress statements ("Processing X of Y")
+- Require waiting confirmation ("Waiting for completion...")
+- Make parallel execution a named violation
+- Include examples of forbidden patterns (multiple Task calls at once)
 
-### 6. Immutable IDs and Traceability
+**Key insight:** The purpose of externalizing state to files is to enable stateless processing. Sequential fresh sub-agents extend this principle to the loop level - stateless between iterations, not just between commands.
 
-**Principle:** Once created, IDs never change
+#### Command Decomposition
+Complex workflows need separate commands per phase:
 
-**What this means:**
-- IDs are permanent references
-- History preserved even after completion
-- Relationships remain traceable over time
-- Deprecation over deletion
+**Structure:**
+```
+/workflow/         # Router command
+/workflow/create   # Phase 1
+/workflow/process  # Phase 2  
+/workflow/complete # Phase 3
+```
 
-**Examples:**
-- Task T-005 remains T-005 even if superseded
-- Question Q-003 stays in history after answering
-- Version progression: v0.1 → v0.2 → v1.0 (never reused)
-- Git commits provide permanent audit trail
-- Session IDs: session_20241207_143025 is immutable
-
-### 7. State Machine Pattern
-
-**Principle:** Entities progress through explicit states with clear transitions
-
-**What this means:**
-- Every entity has defined states
-- Transitions follow rules, not judgment
-- Current state determines valid actions
-- Progress is logged and irreversible
-
-**Examples:**
-- Skills: UNTESTED → UNREADY → MASTERED → NEEDS_REVIEW
-- Tasks: pending → in_progress → completed
-- Questions: open → answered → integrated
-- Plan versions: draft (v0.x) → frozen (v1.0)
-- Markers: "(ready for analysis)" → analyzed → removed
-
-### 8. Session-Based Processing
-
-**Principle:** Work happens in atomic, resumable sessions
-
-**What this means:**
-- Each interaction creates a session record
-- Sessions have clear boundaries
-- Complete input/output/decisions in one file
-- Failed sessions can be analyzed
-- Work can resume from session state
-
-**Examples:**
-- `session_20241207_143025.json` - complete assessment record
-- `teach_20241207_150000.json` - teaching session with all materials
-- `review_20241207_160000.json` - review session with responses
-- Git commits per session for versioning
-- Timestamped work products for audit trail
-
-### 9. Failure Through Decomposition
-
-**Principle:** When something fails, decompose rather than retry
-
-**What this means:**
-- Failure indicates excessive complexity
-- Break into simpler prerequisite parts
-- Add prerequisites to queue
-- Don't repeat the same approach
-
-**Examples:**
-- Failed skill assessment → expand into prerequisite skills
-- Task estimated >500 LOC → decompose into subtasks
-- Q-XXX reveals complexity → create clarifying sub-questions
-- Failed test → write simpler test cases first
-- Complex requirement → break into testable components
+Each command:
+- Single responsibility
+- Completes phase entirely
+- Tells user next command
 
 ## Implementation Patterns
 
-### Pattern 1: Iterative Refinement
-```
-while (open_questions exist):
-    1. Read plan.md
-    2. Select next Q-XXX (by specific algorithm)
-    3. Ask user
-    4. Apply answer to plan.md
-    5. Mark affected tasks
-    6. Process marked tasks
-    7. Write plan.md with new version
+### Pattern: Grep-Based Iteration
+```bash
+# Process items one at a time
+WHILE (grep finds "pattern"):
+  item=$(grep -m1 "pattern" file)
+  # Process item completely
+  # Apply changes
+  # Continue
 ```
 
-### Pattern 2: Explicit Work Queue
-```
-When Q-XXX answered:
-    1. Remove Q-XXX from all Dependencies fields
-    2. For each task where Q-XXX was removed:
-        - Add "needs_analysis: true"
-    3. Save file
-
-Later:
-    1. Find all tasks with needs_analysis = true
-    2. For each one:
-        - Analyze for decomposition
-        - Remove needs_analysis marker
+### Pattern: Single-Pass Completeness
+```bash
+# Do everything for an item before moving on
+For each task:
+  1. Create task
+  2. Add to plan
+  3. Create GitHub issue
+  4. Link relationships
+  # Never: create now, update later
 ```
 
-### Pattern 3: Sub-Agent Delegation
-```
+### Pattern: Sub-Agent Delegation
+```bash
 When context would overflow:
-    1. Main agent identifies specific work scope
-    2. Launch sub-agent with ONLY that scope
-    3. Sub-agent returns structured findings
-    4. Main agent integrates findings into tracked state
+  1. Identify specific scope
+  2. Launch sub-agent with ONLY that scope
+  3. Integrate structured findings
 ```
 
-### Pattern 4: State Machine Progression
-```
-while (not in terminal state):
-    1. Read current state from file
-    2. Determine valid transitions
-    3. Execute transition based on rules
-    4. Update state in file
-    5. Log transition for audit
+### Pattern: Multi-Phase Commands
+```bash
+# Separate commands per phase
+/cmd/phase1   # Complete phase 1 entirely
+/cmd/phase2   # Complete phase 2 entirely
+/cmd          # Router checking state
 ```
 
-### Pattern 5: Failure Recovery Through Decomposition
+### Pattern: Violation Detection
+Include in commands to prevent common failures:
 ```
-When assessment/task fails:
-    1. Don't retry the same thing
-    2. Analyze failure patterns
-    3. Decompose into simpler prerequisites
-    4. Add prerequisites to queue
-    5. Mark original as blocked
-```
+FORBIDDEN BEHAVIORS:
+- Launching multiple tasks at once
+- Saying "I'll optimize this"
+- Skipping progress statements
 
-### Pattern 6: Algorithm Externalization
-```
-For complex algorithms (spacing, IRT, etc):
-    1. Document formula in command file
-    2. Store parameters in config.json
-    3. Show calculations explicitly
-    4. Reference research sources
-    5. Make all constants configurable
+REQUIRED TRACKING:
+✓ State "Processing X of Y" before each task
+✓ State "Waiting for completion" after launch
+✓ State "Task complete" before next
+
+VIOLATION EXAMPLES:
+❌ Task(Analyze T-001) Task(Analyze T-002)  <- FAILURE
+✓ Task(Analyze T-001) [wait] Task(Analyze T-002)  <- CORRECT
 ```
 
-## Anti-Patterns to Avoid
+## Anti-Patterns (Avoid These)
 
-### ❌ Implicit Memory
-"Remember to check X after Y" - Everything must be written to files
+❌ **Implicit Memory** → Write everything to files  
+❌ **Bundled Operations** → Make each operation atomic  
+❌ **LLM Judgment** → Use measurable thresholds  
+❌ **Vague Instructions** → Use explicit search patterns  
+❌ **Hidden Logic** → Document all algorithms  
+❌ **Stateless Retries** → Decompose on failure  
+❌ **Deferred Operations** → Complete items in one pass  
+❌ **Embedded State** → Use dedicated state fields  
+❌ **AI Mechanical Loops** → Extract to scripts  
+❌ **HTML Conditional Comments** → Split into separate commands  
+❌ **Information Overload** → Show only relevant phase  
+❌ **Long loops in single agent** → Use sequential fresh sub-agents  
+❌ **"Efficient" batching** → Follow the specified algorithm exactly  
 
-### ❌ Bundled Operations
-"Identify and fix all issues" - Each operation must be atomic
+## Case Studies
 
-### ❌ LLM Judgment Calls
-"Decide if this needs attention" - Use explicit markers and rules
+### Case Study: Algorithmic Loop Fix
 
-### ❌ Context Accumulation
-"Keep track of all previous..." - State lives in files, not context
+**Problem:** "For any task where Q-XXX was removed" requires implicit tracking
 
-### ❌ Vague Instructions
-"Identify tasks" - What does identify mean? Mark them? List them? Process them?
+**Solution:** Explicit algorithm:
+```bash
+WHILE (grep finds Q-XXX):
+  1. Find FIRST task with Q-XXX
+  2. Remove Q-XXX
+  3. Update status if needed
+  4. REPEAT
+```
 
-### ❌ Hidden Logic
-"Use appropriate algorithm" - All algorithms must be explicit with documented formulas
+No tracking needed - search drives iteration.
 
-### ❌ Subjective Thresholds
-"If it seems complex" - Use measurable metrics with numeric thresholds
+### Case Study: GitHub Issue Script Extraction
 
-### ❌ Stateless Retries
-"Try again if it fails" - Failures should trigger decomposition or state changes
+**Problem:** AI creating 50+ issues one by one (slow, expensive, inconsistent)
 
-## File Structure Requirements
+**Solution:** 
+1. AI creates structured plan.md
+2. Script `claude-plan-issues` handles mechanical loop
+3. 50 issues created in 30 seconds vs 15 minutes
 
-Every command should specify:
-1. What files it reads/writes
-2. The exact schema/format of those files
-3. How state transitions are tracked
-4. What markers/flags are used
-5. How relationships are maintained
-6. Session file naming and structure
-7. Cache/temporary file management
-8. Version control integration (git commits)
+**Lesson:** Extract mechanical operations to scripts.
 
-## Testing the Design
+## Quick Reference
 
-A well-designed command should be able to:
-1. Resume from any interruption by reading file state
-2. Handle iterative refinement without losing context
-3. Maintain correctness across hundreds of iterations
-4. Delegate work without losing track of progress
-5. Provide complete traceability of all decisions
+### Common Good Examples
+- Question: "Should API use REST or GraphQL?"
+- Status field: `"status": "ready"`
+- Task ID: `T-001` (never changes)
+- Session file: `session_20241207_143025.json`
+
+### Common Bad Examples  
+- Question: "How should we implement this?" (too vague)
+- Embedded state: "T-001: Auth (ready)" (state in title)
+- Changing IDs: T-001 → TASK-001 (IDs must be immutable)
+- No session tracking: Results lost on failure
+
+### Standard File Structure
+```
+.claude/
+├── plan.md           # Task breakdown structure
+├── questions.json    # Open decisions
+├── spec-state.json   # Specification state
+├── ADRs/            # Architecture Decision Records
+└── sessions/        # Session records
+```
+
+### Common State Machines
+
+**Task States:**
+```
+ready → blocked → ready → analyzed → complete
+```
+
+**Question States:**
+```
+open → answered → integrated
+```
+
+**Plan Versions:**
+```
+v0.1 → v0.2 → ... → v1.0 (frozen)
+```
 
 ## Summary
 
 The LLM is powerful but unreliable for long-term memory. By externalizing all state to files and using the LLM only for transformations that require natural language understanding, we create robust, resumable, traceable workflows that can handle complex, long-running tasks without degradation.
 
-The key insight: treat the LLM as a stateless function that transforms file state, not as a stateful agent that maintains context. This approach leverages the LLM's strengths (language understanding, pattern matching, creative problem solving) while mitigating its weaknesses (context limits, memory unreliability, inconsistent behavior across sessions).
+**Key insight:** Treat the LLM as a stateless function that transforms file state, not as a stateful agent that maintains context.
+
+## Criteria Design Principles
+
+When creating decision criteria in commands:
+
+**Inclusive over exclusive:**
+- Start with broad criteria and provide examples
+- "Any technical decision" better than "significant architectural decisions"  
+- Include normal cases, not just edge cases
+
+**Concrete examples over abstract rules:**
+- Good: "JWT vs sessions, REST vs GraphQL, Jest vs Vitest"
+- Bad: "Significant trade-offs affecting architecture"
+
+**Multiple paths to qualification:**
+- Use "ANY of these conditions" not "ALL of these conditions"
+- List specific scenarios that qualify
+- Lower the bar for inclusion rather than raising it
+
+**Why this matters:** Overly narrow criteria cause important decisions to be missed. It's better to capture too many decisions than to miss critical ones.
