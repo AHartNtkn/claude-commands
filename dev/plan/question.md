@@ -1,6 +1,6 @@
 ---
-allowed-tools: Read, Edit, Write, Bash(gh issue edit:*), Bash(jq *)
-description: Present and answer all open technical questions
+allowed-tools: Read, Edit, Write, Bash(gh issue edit:*), Bash(gh issue comment:*), Bash(jq *), Grep, Task
+description: Process open technical questions to create ADRs and unblock tasks
 context-commands:
   - name: plan_exists
     command: '[ -f .claude/plan.md ] && echo "true" || echo "false"'
@@ -10,16 +10,23 @@ context-commands:
     command: '[ -f .claude/questions.json ] && jq -r "to_entries | map(select(.value.status == \"open\")) | length" .claude/questions.json || echo "0"'
   - name: open_question_ids
     command: '[ -f .claude/questions.json ] && jq -r "to_entries | map(select(.value.status == \"open\")) | .[].key" .claude/questions.json || echo ""'
+  - name: highest_adr
+    command: '[ -d .claude/ADRs ] && ls .claude/ADRs/ADR-*.md 2>/dev/null | grep -oE "ADR-[0-9]{3}" | sort -V | tail -1 | grep -oE "[0-9]{3}" || echo "000"'
 ---
 
 # Question Resolution Phase
 
-## Preflight Checks
+## Purpose
+Process technical questions from `.claude/questions.json` to create Architecture Decision Records (ADRs) and unblock tasks. Each question is handled by a fresh sub-agent to ensure consistent quality and proper documentation.
 
+## Current State
 - Plan exists: !{plan_exists}
 - Questions file exists: !{questions_exist}
-- Open questions count: !{open_questions}
-- Open question IDs: !{open_question_ids}
+- Open questions: !{open_questions}
+- Question IDs to process: !{open_question_ids}
+- Highest ADR number: !{highest_adr}
+
+## Preflight Checks
 
 **If plan_exists is "false":**
 Stop and inform user: "No plan found. Please run `/dev/plan/create` first."
@@ -27,214 +34,151 @@ Stop and inform user: "No plan found. Please run `/dev/plan/create` first."
 **If open_questions is "0":**
 Stop and inform user: "No open questions. Run `/dev/plan/analyze` to continue task analysis."
 
-## CRITICAL REQUIREMENTS
-
-**MANDATORY SEQUENTIAL PROCESSING:**
-- Process questions in the order they appear in questions.json
-- Complete ALL steps for each question before moving to the next
-- DO NOT skip questions or cherry-pick "interesting" ones
-- Each question requires full processing including ADR creation and task updates
-
-**VERIFICATION REQUIRED:**
-- Before processing any question, explicitly state: "Now processing Q-XXX"
-- After creating ADR, state: "Created ADR-XXX"
-- After updating tasks, state: "Updated [N] tasks in plan.md"
-- After updating GitHub issues, state: "Updated GitHub issues for affected tasks"
-
-**ZERO TOLERANCE FOR SHORTCUTS:**
-- Skipping questions destroys planning integrity
-- Every decision must be documented in an ADR
-- All affected tasks must be updated
-- All GitHub issues must be updated with implementation implications
-
 ## Algorithm to Execute
 
-### Process ALL Open Questions ONE AT A TIME
+### 1. Build Queue of Questions
 
-```
-FOR EACH open question in .claude/questions.json:
-
-  1. Read question details from questions.json
-     - STATE EXPLICITLY: "Now processing Q-XXX"
-  
-  2. Present question to user:
-     ## Question [Q-XXX]: [Question Text]
-     
-     **Context:** [Why this decision matters]
-     
-     **Options:**
-     1. **[Option 1]**
-        - Pros: [advantages]
-        - Cons: [disadvantages]
-     
-     2. **[Option 2]**
-        - Pros: [advantages]
-        - Cons: [disadvantages]
-     
-     [Additional options if any]
-     
-     **Affects tasks:** [List of T-XXX that depend on this]
-     
-     Which option should we choose? (Enter 1, 2, etc. or explain preference)
-  
-  3. Wait for user answer
-  
-  4. Process the answer:
-     
-     a. Create Architecture Decision Record (ADR):
-        Create .claude/ADRs/ADR-XXX-[topic].md with:
-        ```markdown
-        # ADR-XXX: [Question that was answered]
-        
-        ## Status
-        Accepted
-        
-        ## Context
-        [Why this decision was needed - from question context]
-        
-        ## Decision
-        We will use [chosen option] because [user's reasoning if provided].
-        
-        ## Consequences
-        - [Impact on affected tasks]
-        - [Technical implications]
-        - [Trade-offs accepted]
-        
-        ## Affected Tasks
-        - T-XXX: [How this affects the task]
-        - T-YYY: [How this affects the task]
-        ```
-     
-     b. Update questions.json:
-        - Change status: "open" → "answered"
-        - Add "answer": "[chosen option]"
-        - Add "adr": "ADR-XXX"
-        - Add "answered_at": "[timestamp]"
-     
-     c. Update all affected tasks in plan.md:
-        FOR EACH task with this Q-XXX in Dependencies:
-          - Remove Q-XXX from Dependencies field
-          - If no Q-XXX dependencies remain:
-            → Change Status: blocked → ready
-          - Add reference to ADR in task notes
-     
-     d. Update GitHub issues for affected tasks:
-        - Remove "blocked" label if no longer blocked
-        - Add comment with decision's implementation implications:
-          ```bash
-          gh issue comment [ISSUE_NUMBER] --body "Decision: [chosen option]. 
-          Implementation approach for this task: [specific guidance based on decision]"
-          ```
-  
-  5. Save all changes and verify completion:
-     - STATE: "Created ADR-XXX"
-     - STATE: "Updated [N] tasks in plan.md"
-     - STATE: "Updated GitHub issues for affected tasks"
-  
-  6. ONLY THEN continue to next question
-
-END FOR
+Extract all open question IDs using jq:
+```bash
+jq -r 'to_entries | map(select(.value.status == "open")) | .[].key' .claude/questions.json
 ```
 
-## Question Presentation Format
+Count results and create numbered list (e.g., "1. Q-001, 2. Q-002").
 
-Keep questions focused and actionable:
-- One decision point per question
-- Concrete options (not open-ended)
-- Clear trade-offs
-- Visible impact scope
+If no questions found, skip to completion message.
 
-## Answer Processing
+### 2. Process Each Question Sequentially
 
-### Valid Answer Formats:
-- Number (1, 2, 3, etc.) - selects that option
-- Option name - selects that option
-- Explanation with choice - captures reasoning
+FOR question X of Y total questions:
 
-### Creating ADRs:
-- Use sequential numbering (ADR-001, ADR-002, etc.)
-- Filename format: `ADR-XXX-topic-name.md`
-- Always reference the original question
-- Document the "why" behind the decision
+a. **STATE:** "Processing question X of Y: Q-XXX"
 
-### Updating Tasks:
-```
-WHILE (grep finds "Dependencies:.*Q-XXX" in plan.md):
-  1. Find first occurrence using Grep tool
-  2. Remove Q-XXX from that task's Dependencies field
-  3. If no Q-XXX dependencies remain, update Status: blocked → ready
-  4. Update GitHub issue with implementation implications
-  5. Save changes and repeat search
-```
+b. Launch EXACTLY ONE sub-agent:
+   ```
+   Task tool: 
+   - description: "Answer Q-XXX"
+   - subagent_type: "general-purpose"
+   - prompt: [Load from template below, substituting Q-XXX]
+   ```
 
-## ANTI-PATTERNS - DO NOT DO THIS
+c. **STATE:** "Waiting for Q-XXX to complete..."
 
-**❌ SKIPPING QUESTIONS (FORBIDDEN):**
-```markdown
-# WRONG - Never do this:
-Q-001 looks complex, let me check Q-003 first...
-```
+d. WAIT for sub-agent to fully complete
 
-**❌ INCOMPLETE PROCESSING (FORBIDDEN):**
-```markdown
-# WRONG - Never do this:
-Updated questions.json, moving to next question...
-[No ADR created, no tasks updated, no GitHub issues updated]
-```
+e. **STATE:** "✓ Q-XXX complete. Moving to next question."
 
-**❌ DUPLICATING QUESTIONS IN ISSUES (FORBIDDEN):**
-```markdown
-# WRONG - Never do this:
-gh issue comment 123 --body "Q-001: Should we use REST or GraphQL?..."
-```
+f. THEN AND ONLY THEN proceed to next question
 
-**❌ BATCH PROCESSING (FORBIDDEN):**
-```markdown
-# WRONG - Never do this:
-Answering Q-001, Q-002, and Q-003 all at once...
-```
+### Sub-Agent Prompt Template
 
-**CORRECT APPROACH:**
-```markdown
-Now processing Q-001
-[Present question to user]
-[Wait for answer]
-Created ADR-001
-Updated 3 tasks in plan.md
-Updated GitHub issues for affected tasks
+Load the prompt from: `~/.claude/commands/dev/plan/prompts/question-subagent.md`
 
-Now processing Q-002
-[Present question to user]
-[Wait for answer]
-Created ADR-002
-Updated 2 tasks in plan.md
-Updated GitHub issues for affected tasks
+**CRITICAL:** If this file cannot be found, STOP immediately and inform the user:
+"Cannot find required template at ~/.claude/commands/dev/plan/prompts/question-subagent.md"
+NEVER improvise or substitute the prompt - the template contains critical instructions for correct behavior.
+
+Replace `[QUESTION_ID]` with the actual question ID (e.g., Q-001).
+
+The sub-agent will:
+1. Gather all data about the question
+2. Present options to the user
+3. Wait for user's decision
+4. Create ADR with sequential numbering
+5. Update questions.json, plan.md, and GitHub issues
+6. Create session file for audit trail
+
+### 3. Validate Results
+
+After all sub-agents complete:
+
+```bash
+# Verify all questions answered
+jq -r 'to_entries | map(select(.value.status == "open")) | length' .claude/questions.json
+
+# Check ADRs created
+ls -la .claude/ADRs/
+
+# Verify session files
+ls -la .claude/sessions/question-*
 ```
 
-## Completion
-
-After answering all questions:
+### 4. Provide Summary
 
 ```
 ✅ Question resolution complete:
-- Answered [N] technical questions
+- Processed [N] questions sequentially
 - Created [N] Architecture Decision Records
 - Updated [X] blocked tasks → ready
-- Updated [Y] GitHub issues
-
-Architecture decisions documented in .claude/ADRs/
+- Updated [Y] GitHub issues with guidance
+- Session files: .claude/sessions/
 
 Next step: Run `/dev/plan/analyze` to continue task analysis.
 ```
 
-## Important Notes
+## Critical Rules
 
-**ENFORCEMENT:**
-- Present questions ONE AT A TIME - NO EXCEPTIONS
-- Wait for user response before continuing
-- Create ADR immediately after each answer
-- Update ALL affected tasks before moving to next question
-- Update ALL GitHub issues with implementation implications
-- If you skip any step, the planning has FAILED
+### SEQUENTIAL PROCESSING IS MANDATORY
+- Launch only ONE Task tool call at a time
+- Wait for completion before launching next
+- Never launch multiple Task tools in one message
 
-**Remember:** Each decision affects real implementation work. Proper documentation and communication through ADRs and GitHub issues is critical for successful execution.
+**Why:** Each sub-agent needs to see updated state from previous decisions. ADR numbering must be sequential. Tasks may be affected by multiple questions.
+
+### PROGRESS TRACKING REQUIRED
+You MUST provide these explicit statements:
+- Before: "Processing question X of Y: Q-XXX"
+- After launch: "Waiting for Q-XXX to complete..."
+- After complete: "✓ Q-XXX complete. Moving to next question."
+
+### SESSION FILES PROVIDE AUDIT TRAIL
+Each question creates `.claude/sessions/question-Q-XXX-*.json` for:
+- Decision history
+- Task updates performed
+- Issues modified
+- Ability to resume if interrupted
+
+## What Each Question Produces
+
+For each open question, the sub-agent will create:
+
+1. **Architecture Decision Record** (`.claude/ADRs/ADR-XXX-*.md`)
+   - Documents the decision and reasoning
+   - Explains consequences and trade-offs
+   - Provides implementation guidance
+
+2. **Updated questions.json**
+   - Status: open → answered
+   - Records chosen option and ADR reference
+   - Timestamps the decision
+
+3. **Updated plan.md**
+   - Removes Q-XXX from task dependencies
+   - Changes task status: blocked → ready (if no other blockers)
+   - Adds ADR reference to task notes
+
+4. **GitHub Issue Updates**
+   - Removes 'blocked' label when appropriate
+   - Adds comment with implementation guidance
+   - References ADR for full context
+
+5. **Session File** (`.claude/sessions/question-Q-XXX-*.json`)
+   - Complete audit trail of the decision process
+   - Lists all files and issues modified
+
+## Common Anti-Patterns to Avoid
+
+❌ **BATCHING:** Never launch multiple sub-agents at once
+❌ **SKIPPING:** Never skip questions that "look complex"  
+❌ **ASSUMING:** Never make decisions without user input
+❌ **PARTIAL:** Always complete all updates for each question
+
+✓ **CORRECT:** Process each question completely before moving to next
+
+## Why This Design
+
+This command implements core workflow principles:
+- **Fresh sub-agents:** Each question gets clean context, preventing fatigue
+- **Atomic operations:** One question fully resolved per sub-agent
+- **Explicit state:** All decisions recorded in files
+- **Sequential processing:** Ensures consistency and proper numbering
+- **Audit trail:** Session files enable resumption and review

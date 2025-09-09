@@ -1,0 +1,154 @@
+#!/bin/bash
+# claude-question-validate: Validate question processing results
+# Run after /dev/plan/question to verify all updates were completed correctly
+
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo "🔍 Validating question processing results..."
+echo
+
+# Check if questions.json exists
+if [ ! -f .claude/questions.json ]; then
+    echo -e "${RED}❌ No questions.json found${NC}"
+    exit 1
+fi
+
+# Check for open questions
+OPEN_QUESTIONS=$(jq -r 'to_entries | map(select(.value.status == "open")) | length' .claude/questions.json)
+if [ "$OPEN_QUESTIONS" -gt 0 ]; then
+    echo -e "${YELLOW}⚠️  Still have $OPEN_QUESTIONS open questions${NC}"
+    jq -r 'to_entries | map(select(.value.status == "open")) | .[].key' .claude/questions.json
+else
+    echo -e "${GREEN}✓ All questions answered${NC}"
+fi
+
+# Check for answered questions
+ANSWERED_QUESTIONS=$(jq -r 'to_entries | map(select(.value.status == "answered")) | length' .claude/questions.json)
+echo "📊 Answered questions: $ANSWERED_QUESTIONS"
+
+# Validate each answered question has an ADR
+echo
+echo "🗂️  Checking ADRs..."
+MISSING_ADRS=0
+for question in $(jq -r 'to_entries | map(select(.value.status == "answered")) | .[].key' .claude/questions.json); do
+    ADR=$(jq -r ".\"$question\".adr // empty" .claude/questions.json)
+    if [ -z "$ADR" ]; then
+        echo -e "${RED}❌ $question: Missing ADR reference${NC}"
+        MISSING_ADRS=$((MISSING_ADRS + 1))
+    elif [ ! -f ".claude/ADRs/$ADR"*.md ] 2>/dev/null; then
+        echo -e "${RED}❌ $question: ADR $ADR not found${NC}"
+        MISSING_ADRS=$((MISSING_ADRS + 1))
+    else
+        echo -e "${GREEN}✓ $question: ADR $ADR exists${NC}"
+    fi
+done
+
+if [ "$MISSING_ADRS" -eq 0 ]; then
+    echo -e "${GREEN}✓ All ADRs present${NC}"
+fi
+
+# Check for blocked tasks that should be ready
+echo
+echo "📋 Checking task statuses..."
+if [ -f .claude/plan.md ]; then
+    # Find tasks with Q-XXX dependencies that are answered
+    for question in $(jq -r 'to_entries | map(select(.value.status == "answered")) | .[].key' .claude/questions.json); do
+        # Check if any tasks still have this Q-XXX in dependencies
+        if grep -q "Dependencies:.*$question" .claude/plan.md; then
+            echo -e "${YELLOW}⚠️  Tasks still depend on answered $question:${NC}"
+            grep -n "Dependencies:.*$question" .claude/plan.md | head -3
+        fi
+    done
+    
+    # Count task statuses
+    BLOCKED=$(grep -c '\*\*Status:\*\* blocked' .claude/plan.md || echo 0)
+    READY=$(grep -c '\*\*Status:\*\* ready' .claude/plan.md || echo 0)
+    ANALYZED=$(grep -c '\*\*Status:\*\* analyzed' .claude/plan.md || echo 0)
+    
+    echo "Task statuses: $BLOCKED blocked, $READY ready, $ANALYZED analyzed"
+fi
+
+# Check session files
+echo
+echo "📁 Checking session files..."
+if [ -d .claude/sessions ]; then
+    SESSION_COUNT=$(ls .claude/sessions/question-Q-*.json 2>/dev/null | wc -l || echo 0)
+    echo "Found $SESSION_COUNT question session files"
+    
+    # Check for incomplete sessions
+    for session in .claude/sessions/question-Q-*.json; do
+        if [ -f "$session" ]; then
+            STATUS=$(jq -r '.status // "unknown"' "$session")
+            if [ "$STATUS" != "completed" ]; then
+                echo -e "${YELLOW}⚠️  $(basename $session): Status is '$STATUS'${NC}"
+            fi
+        fi
+    done
+else
+    echo -e "${YELLOW}⚠️  No sessions directory found${NC}"
+fi
+
+# Check ADR numbering sequence
+echo
+echo "🔢 Checking ADR numbering..."
+if [ -d .claude/ADRs ]; then
+    # Get all ADR numbers
+    ADR_NUMBERS=$(ls .claude/ADRs/ADR-*.md 2>/dev/null | grep -oE 'ADR-[0-9]{3}' | grep -oE '[0-9]{3}' | sort -n)
+    
+    if [ -n "$ADR_NUMBERS" ]; then
+        PREV=0
+        SEQUENCE_OK=true
+        for num in $ADR_NUMBERS; do
+            # Remove leading zeros for arithmetic
+            num_int=$((10#$num))
+            expected=$((PREV + 1))
+            if [ "$PREV" -gt 0 ] && [ "$num_int" -ne "$expected" ]; then
+                echo -e "${YELLOW}⚠️  ADR numbering gap: ADR-$(printf '%03d' $PREV) → ADR-$(printf '%03d' $num_int)${NC}"
+                SEQUENCE_OK=false
+            fi
+            PREV=$num_int
+        done
+        
+        if [ "$SEQUENCE_OK" = true ]; then
+            echo -e "${GREEN}✓ ADR numbering is sequential${NC}"
+        fi
+    fi
+fi
+
+# Summary
+echo
+echo "═══════════════════════════════════════"
+echo "📊 VALIDATION SUMMARY"
+echo "═══════════════════════════════════════"
+
+ISSUES=0
+
+if [ "$OPEN_QUESTIONS" -gt 0 ]; then
+    echo -e "${YELLOW}⚠️  $OPEN_QUESTIONS questions still open${NC}"
+    ISSUES=$((ISSUES + 1))
+fi
+
+if [ "$MISSING_ADRS" -gt 0 ]; then
+    echo -e "${RED}❌ $MISSING_ADRS ADRs missing${NC}"
+    ISSUES=$((ISSUES + 1))
+fi
+
+if [ "$ISSUES" -eq 0 ]; then
+    echo -e "${GREEN}✅ All validations passed!${NC}"
+    echo
+    echo "Next steps:"
+    if [ "$OPEN_QUESTIONS" -eq 0 ] && [ "$READY" -gt 0 ]; then
+        echo "  → Run /dev/plan/analyze to process ready tasks"
+    elif [ "$OPEN_QUESTIONS" -eq 0 ] && [ "$READY" -eq 0 ] && [ "$BLOCKED" -eq 0 ]; then
+        echo "  → Run /dev/plan/complete to finalize the plan"
+    fi
+else
+    echo -e "${RED}Issues found - review above for details${NC}"
+    exit 1
+fi

@@ -189,6 +189,62 @@ Each command:
 - Completes phase entirely
 - Tells user next command
 
+## Command Design Principles
+
+### Resource References
+Always use absolute paths for scripts, templates, and resources:
+- ✓ `~/.claude/commands/dev/script-name` 
+- ❌ `dev/script-name`
+Commands run from user's project directory, not command directory.
+
+### Required Resources
+If a command requires a template/script/file:
+1. Specify full absolute path
+2. Include explicit failure instruction: "If [resource] cannot be found, STOP and inform user"
+3. NEVER allow improvisation or substitution
+
+### Technical Decisions
+Commands must NEVER make technical choices for the user:
+- Algorithm choices (sorting, searching, traversal)
+- Data structure choices (arrays vs lists vs trees)  
+- Design pattern choices (observer vs pub-sub)
+- Library/framework/tool choices
+
+If multiple valid approaches exist, create a question. Being vague about unchosen implementations is CORRECT.
+
+### Pattern Matching Precision
+Be specific about context to avoid false matches:
+- ✓ `grep '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]'` (only task lines)
+- ❌ `grep '\[Issue #TBD\]'` (matches anywhere including comments)
+
+### Progress Statements as Enforcement
+Required progress statements prevent violations:
+- "Processing X of Y" - proves not batching
+- "Waiting for completion" - proves sequential  
+- "Complete" - proves finished before next
+Missing statements indicate algorithm violation.
+
+### Mandatory vs Optional
+Command instructions are MANDATORY unless explicitly marked optional:
+- "Load from template" = MUST load, not "try to load"
+- "Process sequentially" = MUST be sequential
+- "Create session file" = MUST create
+Mark optional steps explicitly: "OPTIONAL: ..."
+
+### Audit Trail Pattern
+For complex operations, use session files:
+```json
+{
+  "start_time": "ISO-8601",
+  "initial_state": {...},
+  "decisions": {...},
+  "actions_taken": [...],
+  "end_time": "ISO-8601",
+  "status": "completed"
+}
+```
+Location: `.claude/sessions/[command]-[id]-[timestamp].json`
+
 ## Implementation Patterns
 
 ### Pattern: Grep-Based Iteration
@@ -261,6 +317,9 @@ VIOLATION EXAMPLES:
 ❌ **Information Overload** → Show only relevant phase  
 ❌ **Long loops in single agent** → Use sequential fresh sub-agents  
 ❌ **"Efficient" batching** → Follow the specified algorithm exactly  
+❌ **Relative Resource Paths** → Use absolute paths (~/.claude/commands/...)  
+❌ **Assuming Technical Decisions** → Create questions for all choices  
+❌ **Improvising When Resources Missing** → Fail explicitly with error  
 
 ## Case Studies
 

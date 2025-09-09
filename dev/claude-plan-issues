@@ -149,7 +149,7 @@ get_task_issue() {
 
 # Main processing loop
 CREATED_COUNT=0
-TOTAL_TBD=$(grep -c '\[Issue #TBD\]' .claude/plan.md || echo 0)
+TOTAL_TBD=$(grep -c '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]' .claude/plan.md || echo 0)
 
 if [ "$TOTAL_TBD" -eq 0 ]; then
     echo -e "${YELLOW}No tasks with [Issue #TBD] found.${NC}"
@@ -158,9 +158,9 @@ fi
 
 echo -e "${GREEN}Found ${TOTAL_TBD} tasks needing issues${NC}"
 
-while grep -q '\[Issue #TBD\]' .claude/plan.md; do
-    # Find first task with [Issue #TBD]
-    TASK_LINE_NUM=$(grep -n '\[Issue #TBD\]' .claude/plan.md | head -1 | cut -d: -f1)
+while grep -q '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]' .claude/plan.md; do
+    # Find first task with [Issue #TBD] (must be on a task line starting with * **[ ] T-)
+    TASK_LINE_NUM=$(grep -n '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]' .claude/plan.md | head -1 | cut -d: -f1)
     
     # Extract task details
     eval "$(extract_task_details $TASK_LINE_NUM)"

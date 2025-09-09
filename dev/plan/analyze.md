@@ -1,6 +1,6 @@
 ---
 allowed-tools: Read, Edit, Write, Grep, WebSearch, Task, Bash(gh issue view:*), Bash(gh issue edit:*), Bash(jq *)
-description: Analyze all ready tasks for decisions and decomposition
+description: Analyze ready tasks for technical decisions and decomposition
 context-commands:
   - name: plan_exists
     command: '[ -f .claude/plan.md ] && echo "true" || echo "false"'
@@ -14,12 +14,19 @@ context-commands:
 
 # Task Analysis Phase
 
-## Preflight Checks
+## Purpose
+Analyze ready tasks from `.claude/plan.md` to identify technical decisions needed and decompose large tasks. Each task is handled by a fresh sub-agent to ensure consistent analysis quality.
 
+## Core Principle: No Unauthorized Technical Decisions
+The analysis phase identifies decisions that need to be made, it does NOT make those decisions. Any choice about algorithms, data structures, patterns, architectures, or tools must be deferred to user approval via questions.
+
+## Current State
 - Plan exists: !{plan_exists}
 - Ready tasks to analyze: !{ready_count}
 - Questions file exists: !{questions_exist}
 - Open questions: !{open_questions}
+
+## Preflight Checks
 
 **If plan_exists is "false":**
 Stop and inform user: "No plan found. Please run `/dev/plan/create` first."
@@ -31,182 +38,63 @@ Check if there are open questions:
 
 ## Algorithm to Execute
 
-### Queue All Tasks Then Process Sequentially
+### 1. Build Queue of Ready Tasks
 
-1. Build queue of ALL ready tasks:
+Use Grep to find all ready tasks:
+```bash
+grep "\*\*Status:\*\* ready" .claude/plan.md -n
+```
 
-Use the Grep tool to find ready tasks:
-- Use Grep with pattern "\*\*Status:\*\* ready" on .claude/plan.md
-- Use output_mode="content" with -n flag to get line numbers
-- Count the results
+Extract task IDs and issue numbers from results.
+Create numbered list: "1. T-001 (Issue #101), 2. T-002 (Issue #102), etc."
 
-If no tasks found, skip to completion.
+If no tasks found, skip to completion message.
 
-2. Process the queue SEQUENTIALLY (one at a time):
-
-Extract ALL task IDs and issue numbers from step 1 results.
-Create a numbered list: 1. T-001 (Issue #101), 2. T-002 (Issue #102), etc.
-
-Then process EACH task ONE AT A TIME:
+### 2. Process Each Task Sequentially
 
 FOR task X of Y total tasks:
-  a. STATE EXPLICITLY: "Processing task X of Y: T-XXX"
-  b. Launch EXACTLY ONE sub-agent:
-     Task tool: description="Analyze T-XXX" subagent_type="general-purpose" 
-     prompt="[see template below with T-XXX and #XXX substituted]"
-  c. STATE EXPLICITLY: "Waiting for T-XXX to complete..."
-  d. WAIT for the sub-agent to fully complete
-  e. STATE EXPLICITLY: "✓ T-XXX complete. Moving to next task."
-  f. THEN AND ONLY THEN proceed to the next task
 
-CRITICAL ENFORCEMENT:
-- You MUST launch only ONE Task tool call at a time
-- You MUST wait for it to complete before launching the next
-- You MUST NOT launch multiple Task tools in one message
-- If your output shows Task(...) immediately followed by another Task(...), you have FAILED
+a. **STATE:** "Processing task X of Y: T-XXX"
 
-VIOLATION EXAMPLES (FORBIDDEN):
-❌ Task(Analyze T-001)
-   Task(Analyze T-002)  <- FAILURE: Multiple tasks launched at once
+b. Launch EXACTLY ONE sub-agent:
+   ```
+   Task tool:
+   - description: "Analyze T-XXX"
+   - subagent_type: "general-purpose"
+   - prompt: [Load from template below, substituting T-XXX and issue number]
+   ```
 
-✓ CORRECT:
-Processing task 1 of 31: T-001
-Task(Analyze T-001)
-Waiting for T-001 to complete...
-[... sub-agent executes ...]
-✓ T-001 complete. Moving to next task.
-Processing task 2 of 31: T-002
-Task(Analyze T-002)
-Waiting for T-002 to complete...
-  
-Sub-agent prompt template (replace [TASK_ID] with actual task ID, [ISSUE_NUM] with actual issue number *without* a #):
-  ```
-  "Analyze ONLY task [TASK_ID] from .claude/plan.md
-  
-  CONTEXT:
-  - Your task ID: [TASK_ID]
-  - GitHub issue number: [ISSUE_NUM]
-  
-  PHASE 1: GATHER ALL DATA
-  
-  1. Find your task using Grep tool: pattern "[TASK_ID]" on .claude/plan.md with -n flag
-  2. Read the complete task section using the line number from step 1
-  3. Extract from your task:
-     - Dependencies list (e.g., [T-001, T-002])
-     - Current status (should be 'ready')
-     - Spec refs
-     - Acceptance criteria
-     - Task title/description
-  4. Calculate highest IDs for potential use:
-     - Use Grep tool: pattern "T-[0-9]{3}" on .claude/plan.md, find highest
-     - Use Grep tool: pattern "Q-[0-9]{3}" on .claude/questions.json, find highest (or Q-000 if none)
-  5. Get current issue body: gh issue view [ISSUE_NUM] --json body -q .body
-  6. For EACH dependency T-XXX in your dependencies list:
-     - Use Grep tool: pattern "T-XXX.*Issue #[0-9]*" on .claude/plan.md to find issue number
-     - Get its title from plan.md
-  
-  PHASE 2: ANALYZE AND DECIDE PATH
-  
-  Determine which ONE path applies:
-  
-  PATH A - BLOCKED (needs technical decision):
-    Criteria: ANY of these conditions:
-    - Multiple technically valid approaches exist (e.g., JWT vs sessions, REST vs GraphQL)
-    - Choice of library/framework/pattern needed (e.g., which state management, which test framework)
-    - Algorithm selection required (e.g., search strategy, caching approach)
-    - Data structure or storage decisions (e.g., normalized vs denormalized, SQL vs NoSQL)
-    - Implementation would be hard to change later
-    - Decision affects other tasks or components
-    
-    Prepare (don't execute yet):
-    - Question for questions.json with next Q-XXX ID
-    - Plan to change status to 'blocked'
-    - Plan to add Q-XXX to dependencies
-  
-  PATH B - DECOMPOSE (>500 LOC):
-    Criteria: Can split into 2+ non-overlapping functional pieces
-    Prepare (don't execute yet):
-    - Design 2+ subtasks using 100% rule (complete coverage, no overlap)
-    - Each subtask gets next sequential T-XXX ID
-    - Plan to change status to 'analyzed'
-    - Plan to add "Decomposes into: [subtask IDs]"
-  
-  PATH C - SIMPLE (<500 LOC):
-    Criteria: Clear, focused implementation under 500 LOC
-    Prepare (don't execute yet):
-    - SPECIFIC implementation guidance (algorithms, files, tests)
-    - Plan to change status to 'analyzed'
-  
-  PHASE 3: EXECUTE ALL CHANGES
-  
-  1. Update plan.md with ALL changes at once:
-     - Status change
-     - Add Q-XXX to dependencies (if PATH A)
-     - Add "Decomposes into:" field (if PATH B)
-     - Add new subtasks after parent (if PATH B)
-  
-  2. Execute path-specific actions:
-  
-  IF PATH A (BLOCKED):
-    a. Write updated questions.json with new question
-    b. Update GitHub issue:
-       gh issue edit [ISSUE_NUM] --add-label 'blocked' --body "
-       ## Dependencies
-       Must complete first:
-       - [ ] #[dep_issue] T-XXX: [dep name]
-       - [ ] Q-XXX: [question text]
-       
-       ## ⚠️ Blocked
-       Waiting for architectural decision Q-XXX
-       
-       [Original task description from current body]"
-  
-  IF PATH B (DECOMPOSE):
-    a. Run script: ~/.claude/commands/dev/claude-plan-issues
-    b. After script completes, get subtask issue numbers from plan.md
-    c. Update GitHub issue:
-       gh issue edit [ISSUE_NUM] --body "
-       ## Dependencies
-       Must complete first:
-       - [ ] #[dep_issue] T-XXX: [dep name]
-       
-       ## Decomposition
-       This task has been decomposed into:
-       - [ ] #[sub1_issue] T-XXX: [subtask1 name]
-       - [ ] #[sub2_issue] T-YYY: [subtask2 name]
-       
-       [Original task description from current body]"
-  
-  IF PATH C (SIMPLE):
-    Update GitHub issue:
-    gh issue edit [ISSUE_NUM] --body "
-    ## Dependencies
-    Must complete first:
-    - [ ] #[dep_issue] T-XXX: [dep name]
-    
-    ## Implementation Approach
-    [Your SPECIFIC guidance - algorithms, patterns, architecture]
-    
-    ## Key Components
-    [SPECIFIC components to build]
-    
-    ## Files to Create/Modify
-    [SPECIFIC file paths]
-    
-    ## Testing Requirements
-    [SPECIFIC test scenarios]
-    
-    [Original task description from current body]"
-  
-  CRITICAL RULES:
-  - Only modify task [TASK_ID] in plan.md
-  - Do not read or modify other tasks
-  - Do not look at or mention remaining work
-  - Complete ALL steps before exiting
-  - If you mention any other task ID, you have failed"
-  ```
+c. **STATE:** "Waiting for T-XXX to complete..."
 
-3. After all sub-agents complete, provide summary:
+d. WAIT for sub-agent to fully complete
+
+e. **STATE:** "✓ T-XXX complete. Moving to next task."
+
+f. THEN AND ONLY THEN proceed to next task
+
+### Sub-Agent Prompt Template
+
+Load the prompt from: `~/.claude/commands/dev/plan/prompts/analyze-subagent.md`
+
+**CRITICAL:** If this file cannot be found, STOP immediately and inform the user:
+"Cannot find required template at ~/.claude/commands/dev/plan/prompts/analyze-subagent.md"
+NEVER improvise or substitute the prompt - the template contains critical instructions for correct behavior.
+
+Replace:
+- `[TASK_ID]` with the actual task ID (e.g., T-001)
+- `[ISSUE_NUM]` with the issue number WITHOUT # (e.g., 101)
+
+The sub-agent will:
+1. Gather all task data and create session file
+2. **Perform mandatory complexity analysis** (NEW: estimates LOC explicitly)
+3. Record analysis in session file for transparency
+4. Choose path based on analysis: Block, Decompose, or Simple
+5. Update plan.md and GitHub issue accordingly
+6. Create questions or subtasks as needed
+7. Finalize session file with complete audit trail
+
+### 3. Provide Summary
+
 ```
 ✅ Task analysis complete:
 - [N] tasks analyzed by sub-agents (processed sequentially)
@@ -215,100 +103,107 @@ Sub-agent prompt template (replace [TASK_ID] with actual task ID, [ISSUE_NUM] wi
 - Run `/dev/plan/complete` if all tasks are analyzed
 ```
 
-## ANTI-BATCHING ENFORCEMENT
+## Critical Rules
 
-**FORBIDDEN BEHAVIORS:**
-- Launching multiple Task tools at once to "save time"
-- Saying "I'll process these efficiently" or "Let me batch these"
-- Trying to "optimize" by running tasks in parallel
-- Skipping the wait statements between tasks
+### SEQUENTIAL PROCESSING IS MANDATORY
+- Launch only ONE Task tool call at a time
+- Wait for completion before launching next
+- Never launch multiple Task tools in one message
 
-**WHY SEQUENTIAL IS MANDATORY:**
-- Each sub-agent calculates the next available ID
-- Parallel execution causes ID collisions (multiple T-032s)
-- Sequential ensures each agent sees updated state from previous agents
+**Why:** Each sub-agent calculates next available IDs. Parallel execution causes ID collisions.
 
-**REMEMBER:** You've failed every time you tried to be "efficient" by batching. Follow the sequential process exactly as specified.
+### PROGRESS TRACKING REQUIRED
+You MUST provide these explicit statements:
+- Before: "Processing task X of Y: T-XXX"
+- After launch: "Waiting for T-XXX to complete..."
+- After complete: "✓ T-XXX complete. Moving to next task."
 
-## Decision Creation Guidelines
+### COMPLEXITY ANALYSIS ENFORCED
+Sub-agents MUST perform explicit LOC estimation before choosing a path. This prevents defaulting to "simple" without proper analysis.
 
-### Good Questions (Create Q-XXX):
-- "Should the API use REST or GraphQL?" 
-- "Should sessions be stored in Redis or PostgreSQL?"
-- "Should we use JWT or session cookies for auth?"
-- "Which testing framework: Jest, Vitest, or Mocha?"
-- "Canvas API or SVG for rendering?"
-- "Recursive or iterative graph traversal?"
-- "Synchronous or async event handling?"
-- "In-memory caching or file-based caching?"
+### SESSION FILES PROVIDE AUDIT TRAIL
+Each task creates `.claude/sessions/analyze-T-XXX-*.json` for:
+- Complete complexity analysis with LOC estimates
+- Path decision and reasoning
+- Actions taken (status changes, subtasks, questions)
+- Performance metrics (duration)
+- **Debugging transparency**: Can see exactly why tasks weren't decomposed
 
-### Bad Questions (Don't Create):
-- "How should we implement this?" (too vague)
-- "What's the best approach?" (no concrete options)
-- "Should we write tests?" (always yes)
-- "Is this a good idea?" (too subjective)
-- Trivial choices with no meaningful trade-offs (e.g., variable names)
-- Decisions already covered by project conventions
-- Purely stylistic preferences (use linter/formatter instead)
+## What Each Analysis Produces
 
-### Question Format
-```json
-{
-  "Q-001": {
-    "question": "Should the API use REST or GraphQL?",
-    "context": "T-005 requires API design decision",
-    "options": [
-      {"choice": "REST", "pros": "Simple, standard", "cons": "Over-fetching"},
-      {"choice": "GraphQL", "pros": "Flexible", "cons": "Complexity"}
-    ],
-    "affects": ["T-005", "T-006", "T-012"],
-    "status": "open"
-  }
-}
-```
+Depending on the path chosen by the sub-agent:
+
+### PATH A - BLOCKED (Technical Decision Needed)
+- New question in `.claude/questions.json`
+- Task status: ready → blocked
+- GitHub issue labeled 'blocked'
+- Q-XXX added to task dependencies
+
+### PATH B - DECOMPOSED (>500 LOC)
+- New subtasks in `.claude/plan.md`
+- Parent task status: ready → analyzed
+- GitHub issues created for subtasks
+- Parent issue shows decomposition
+
+### PATH C - SIMPLE (<500 LOC)
+- Task status: ready → analyzed
+- GitHub issue updated with implementation guidance
+- Specific algorithms, files, and tests documented
 
 ## Task Decomposition Guidelines
 
-### When to Decompose:
-- Estimated implementation >500 LOC
-- Multiple distinct functional pieces
-- Can split with no overlap (100% rule)
+### Purpose
+**Keep PRs to manageable size for review.** The 500 LOC threshold represents maximum single PR size.
 
-### How to Decompose:
-- MINIMUM 2 subtasks (single-child decomposition is invalid)
-- Each subtask should be 100-300 LOC
-- Subtasks should have clear boundaries
-- No shared code between subtasks
-- Clear integration points
-- If you can't split into 2+ pieces, task is probably <500 LOC
+### Decomposition Criteria
+- Tasks >500 LOC: Too large for single PR, SHOULD decompose
+- Tasks 300-500 LOC: Acceptable for single PR
+- Tasks <300 LOC: Ideal PR size
 
-## Important Notes
+### Requirements
+- Minimum 2 subtasks (no single-child decomposition)
+- Each subtask 100-300 LOC (optimal)
+- Clear boundaries, no overlap
+- 100% coverage of original task
 
-**How This Works:**
-- Main agent builds a queue of all tasks upfront
-- Sub-agents are launched sequentially from the queue
-- Each sub-agent handles exactly ONE task in complete isolation
-- IDs are checked fresh before each sub-agent
+## Common Anti-Patterns to Avoid
 
-**Why This Prevents Issues:**
-- No fatigue: Each task gets a fresh agent
-- No batching: Sub-agents literally cannot see other tasks  
-- No shortcuts: Each agent has explicit instructions
-- No laziness: Main agent doesn't do analysis work
+❌ **BATCHING:** Never launch multiple sub-agents at once
+❌ **GUESSING:** Never estimate without explicit component analysis
+❌ **SKIPPING:** Never skip complexity analysis phase
+❌ **SHORTCUTS:** Always wait for each sub-agent to complete
 
-**File Safety:**
-- Each sub-agent only modifies its assigned task in plan.md
-- Sequential execution prevents ID collisions (each agent sees updated state)
-- IDs are calculated fresh by each sub-agent when it runs
-- Always use gh issue edit --body, NEVER gh issue comment
+✓ **CORRECT:** Process each task completely with full analysis
 
-**Progress Tracking Requirements:**
-- You MUST state "Processing task X of Y" before each sub-agent
-- You MUST state "Waiting for T-XXX to complete..." after launching
-- You MUST state "✓ T-XXX complete" before moving to next
-- This makes batching violations immediately visible
+## Decision Creation Guidelines
 
-**Violation Detection:**
-- If console shows multiple Task(...) entries without intervening completion messages, you've violated the sequential requirement
-- If you process tasks out of order (T-003 before T-002), you've failed
-- If you say anything about "efficiency" or "batching", you've failed
+### Good Questions (Create Q-XXX)
+Algorithm/Data Structure Decisions:
+- "Should we use binary search, hash lookup, or linear scan for finding items?"
+- "Should data be stored in array, linked list, or tree structure?"
+- "Should we use DFS or BFS for graph traversal?"
+- "Should cache use LRU, LFU, or TTL-based eviction?"
+
+Pattern/Architecture Decisions:
+- "Should events use observer pattern, pub-sub, or callbacks?"
+- "Should state be managed with Redux, MobX, or Context API?"
+- "Should the API use REST or GraphQL?"
+
+Implementation Decisions:
+- "Should sessions be stored in Redis or PostgreSQL?"
+- "Which testing framework: Jest, Vitest, or Mocha?"
+- "Canvas API or SVG for rendering?"
+
+### Bad Questions (Don't Create)
+- "How should we implement this?" (too vague, no specific options)
+- "What's the best approach?" (no concrete choices)
+- "Should we write tests?" (always yes, not a choice)
+
+## Why This Design
+
+This command implements core workflow principles:
+- **Fresh sub-agents:** Each task gets clean context, preventing fatigue
+- **Atomic operations:** One task fully analyzed per sub-agent
+- **Explicit analysis:** Mandatory LOC estimation prevents gut decisions
+- **Sequential processing:** Ensures ID consistency
+- **PR scope focus:** Decomposition based on reviewable size, not architecture
