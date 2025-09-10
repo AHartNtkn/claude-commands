@@ -37,7 +37,15 @@ Being vague is CORRECT. Being specific without approval is WRONG.
 6. For EACH dependency T-XXX in your dependencies list:
    - Use Grep tool: pattern "T-XXX.*Issue #[0-9]*" on .claude/plan.md to find issue number
    - Get its title from plan.md
-7. Create session tracking file:
+7. Check for previous analysis sessions:
+   Look for existing .claude/sessions/analyze-[TASK_ID]-*.json files
+   If found, read the most recent one to understand:
+   - What analysis was previously done
+   - What path was chosen and why
+   - What questions were created or what decomposition occurred
+   - Why this task might be "ready" again (questions answered? subtasks completed?)
+
+8. Create session tracking file:
    Create .claude/sessions/analyze-[TASK_ID]-$(date +%Y%m%d_%H%M%S).json with:
    ```json
    {
@@ -47,13 +55,69 @@ Being vague is CORRECT. Being specific without approval is WRONG.
      "status": "in_progress",
      "title": "[task title from plan.md]",
      "dependencies": [list from step 3],
-     "acceptance_criteria": "[from plan.md]"
+     "acceptance_criteria": "[from plan.md]",
+     "previous_analysis": "[summary of any previous session findings, or null if first analysis]"
    }
    ```
 
-## PHASE 1.5: MANDATORY COMPLEXITY ANALYSIS
+## PHASE 2: CHECK FOR EXISTING BLOCKING QUESTIONS
 
-You MUST perform and document this analysis before choosing a path:
+BEFORE any new analysis, check if this task is already blocked by unanswered questions:
+
+1. **Search questions.json** for any open questions (status: "open") that might block this task
+2. **Check task dependencies** - if your task dependencies include Q-XXX references, verify their status
+3. **Early blocking rule**: If ANY relevant open questions exist → immediately go to PATH A (BLOCKED)
+
+If no existing blocking questions found, proceed to Phase 3.
+
+## PHASE 3: TECHNICAL DECISION DISCOVERY
+
+CRITICAL: Technical clarity comes before complexity estimation.
+
+For each acceptance criterion from your task:
+
+1. **Systematic Examination**:
+   - Break down criterion into required components
+   - For each component ask: "Are there 2+ valid technical approaches?"
+   - If YES → requires question
+
+2. **Decision Categories to Check**:
+   - Algorithm choices (search, sort, traversal methods)  
+   - Data structure choices (storage, organization, indexing)
+   - Pattern choices (event handling, state management)
+   - Architecture choices (component interaction)
+   - Performance trade-offs (space vs time, accuracy vs speed)
+
+3. **Question Creation Rules**:
+   - ONE decision per question (never bundle)
+   - Specific options listed ("A vs B vs C" not "what approach")
+   - Individual Q-XXX IDs
+   - Clear task blocking relationships
+
+4. **Early Exit Rule**:
+   - If ANY new questions created → immediately go to PATH A
+   - Do NOT proceed to complexity analysis
+   - Questions must be resolved before implementation planning
+
+5. **Question Quality Examples**:
+
+**Bad (bundled mega-question):**
+```json
+"Q-001": {
+  "question": "Graph Engine approach: (1) algorithms (2) data structures (3) events (4) integration (5) performance?"
+}
+```
+
+**Good (separated decisions):**
+```json
+"Q-001": {"question": "Composition detection: graph traversal vs geometric detection vs rule-based matching?"},
+"Q-002": {"question": "Wire tracking storage: adjacency lists vs wire objects vs coordinate systems?"},  
+"Q-003": {"question": "Event handling: observer pattern vs event delegation vs direct handlers?"}
+```
+
+## PHASE 4: MANDATORY COMPLEXITY ANALYSIS
+
+You MUST perform and document this analysis (only if no questions found in Phases 2-3):
 
 1. **COMPLEXITY ESTIMATION** (required):
    List each major component this task requires:
@@ -75,7 +139,7 @@ You MUST perform and document this analysis before choosing a path:
    - If YES: This exceeds single PR scope and SHOULD be decomposed
    - If NO: This fits in a single PR
 
-CRITICAL: You must complete ALL three analyses above before proceeding to Phase 2.
+CRITICAL: You must complete ALL three analyses above before proceeding to Phase 5.
 
 4. **UPDATE SESSION FILE** with complexity analysis:
    Update .claude/sessions/analyze-[TASK_ID]-*.json to add:
@@ -98,42 +162,31 @@ CRITICAL: You must complete ALL three analyses above before proceeding to Phase 
    }
    ```
 
-## PHASE 2: ANALYZE AND DECIDE PATH
+## PHASE 5: DECIDE PATH
 
-Based on your Phase 1.5 analysis, determine which ONE path applies:
+Based on Phases 2-4, determine which ONE path applies:
 
-### PATH A - BLOCKED (needs technical decision)
+### PATH A - BLOCKED (existing or new technical decisions needed)
 
-Criteria: ANY of these conditions:
-- Algorithm choice needed (sorting, searching, traversal, optimization)
-- Data structure choice needed (how to store, organize, or index data)
-- Design pattern choice needed (how to structure the code)
-- Architecture choice needed (how components interact)
-- Library/framework/tool selection needed
-- Protocol/format/standard selection needed
-- Performance trade-off decisions (space vs time, accuracy vs speed)
-- Multiple technically valid approaches exist
-- Implementation would be hard to change later
-- Decision affects other tasks or components
+Criteria: 
+- Phase 2: Found existing open questions that block this task, OR
+- Phase 3: New technical decisions identified that need user approval
 
-Examples that MUST create questions:
-- "Need to search data" → Q: Binary search vs hash lookup vs linear scan?
-- "Need to store items" → Q: Array vs linked list vs tree structure?
-- "Need to handle events" → Q: Observer pattern vs event emitter vs callbacks?
-- "Need to cache results" → Q: LRU vs LFU vs TTL-based eviction?
-- "Need to parse data" → Q: Recursive descent vs regex vs state machine?
-- "Need state management" → Q: Redux vs MobX vs Context API vs Zustand?
+Use PATH A if:
+- Task dependencies include unanswered Q-XXX questions  
+- Phase 3 systematic analysis identified any technical ambiguities requiring decisions
 
 Prepare (don't execute yet):
-- Question for questions.json with next Q-XXX ID
-- Plan to change status to 'blocked'
-- Plan to add Q-XXX to dependencies
+- If existing questions: Plan to keep status as 'blocked' 
+- If new questions: Create questions for questions.json with next Q-XXX IDs
+- Plan to add Q-XXX to dependencies if not already present
 
 ### PATH B - DECOMPOSE (>500 LOC)
 
 Criteria: 
-- Total estimated LOC > 500 AND
-- Can split into 2+ non-overlapping functional pieces
+- Phase 2-3: No blocking questions found or created, AND
+- Phase 4: Total estimated LOC > 500, AND  
+- Phase 4: Can split into 2+ non-overlapping functional pieces
 
 Purpose: Keep PRs to manageable size for review and implementation.
 Note: 500 LOC is the threshold for a single PR. Tasks exceeding this SHOULD be decomposed.
@@ -146,13 +199,15 @@ Prepare (don't execute yet):
 
 ### PATH C - SIMPLE (<500 LOC)
 
-Criteria: Clear, focused implementation under 500 LOC (based on Phase 1.5 analysis)
+Criteria: 
+- Phase 2-3: No blocking questions found or created, AND
+- Phase 4: Total estimated LOC < 500
 
 Prepare (don't execute yet):
 - SPECIFIC implementation guidance (algorithms, files, tests)
 - Plan to change status to 'analyzed'
 
-## PHASE 3: EXECUTE ALL CHANGES
+## PHASE 6: EXECUTE ALL CHANGES
 
 ### 1. Update plan.md with ALL changes at once:
 - Status change

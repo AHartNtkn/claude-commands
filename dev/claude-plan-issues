@@ -147,6 +147,18 @@ get_task_issue() {
     grep -E "\\* \\*\\*\\[ \\] ${task_id}[: ]" .claude/plan.md | grep -oE '\[Issue #[0-9]+\]' | grep -oE '[0-9]+' || echo ""
 }
 
+# Function to find which task decomposes into this task
+find_decomposing_task() {
+    local task_id=$1
+    # Look for lines containing "Decomposes into:" that mention this task ID
+    grep -E "Decomposes into:.*${task_id}" .claude/plan.md | while IFS= read -r line; do
+        # Find the task line that contains this decomposition (look backwards)
+        line_num=$(grep -n -F "$line" .claude/plan.md | cut -d: -f1)
+        # Search backwards from this line to find the task header
+        sed -n "1,${line_num}p" .claude/plan.md | tac | grep -m1 -E '^\* \*\*\[ \] T-[0-9]+' | grep -oE 'T-[0-9]+' | head -1
+    done | head -1
+}
+
 # Main processing loop
 CREATED_COUNT=0
 TOTAL_TBD=$(grep -c '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]' .claude/plan.md || echo 0)
@@ -182,8 +194,9 @@ while grep -q '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]' .claude/plan.md; do
     sed -i "${TASK_LINE_NUM}s/\[Issue #TBD\]/[Issue #${ISSUE_NUM}]/" .claude/plan.md
     
     # Establish sub-issue relationship
+    # First check if this task has an explicit Parent field
     if [ -n "$PARENT" ] && [ "$PARENT" != "none" ]; then
-        # This is a subtask - link to parent task's issue
+        # This is a subtask with explicit parent - link to parent task's issue
         PARENT_ISSUE=$(get_task_issue "$PARENT")
         if [ -n "$PARENT_ISSUE" ]; then
             echo -e "Linking as sub-issue of ${PARENT} (Issue #${PARENT_ISSUE})"
@@ -193,10 +206,24 @@ while grep -q '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]' .claude/plan.md; do
             echo -e "${YELLOW}Warning: Parent task ${PARENT} has no issue yet${NC}"
         fi
     else
-        # This is a top-level task - link to spec issue
-        echo -e "Linking as sub-issue of spec (Issue #${SPEC_ISSUE})"
-        gh sub-issue add "$SPEC_ISSUE" "$ISSUE_NUM" --repo "$REPO" || \
-            echo -e "${RED}Error: Failed to establish sub-issue relationship${NC}"
+        # Check if this task is part of another task's decomposition
+        DECOMPOSING_TASK=$(find_decomposing_task "$TASK_ID")
+        if [ -n "$DECOMPOSING_TASK" ]; then
+            # This task is decomposed from another task - link to that task's issue
+            DECOMPOSING_ISSUE=$(get_task_issue "$DECOMPOSING_TASK")
+            if [ -n "$DECOMPOSING_ISSUE" ]; then
+                echo -e "Linking as sub-issue of decomposing task ${DECOMPOSING_TASK} (Issue #${DECOMPOSING_ISSUE})"
+                gh sub-issue add "$DECOMPOSING_ISSUE" "$ISSUE_NUM" --repo "$REPO" || \
+                    echo -e "${RED}Error: Failed to establish sub-issue relationship${NC}"
+            else
+                echo -e "${YELLOW}Warning: Decomposing task ${DECOMPOSING_TASK} has no issue yet${NC}"
+            fi
+        else
+            # This is a top-level task - link to spec issue
+            echo -e "Linking as sub-issue of spec (Issue #${SPEC_ISSUE})"
+            gh sub-issue add "$SPEC_ISSUE" "$ISSUE_NUM" --repo "$REPO" || \
+                echo -e "${RED}Error: Failed to establish sub-issue relationship${NC}"
+        fi
     fi
     
     CREATED_COUNT=$((CREATED_COUNT + 1))

@@ -1,123 +1,189 @@
 ---
-allowed-tools: Read, Bash(ls:*)
-description: Router for plan workflow - directs to appropriate phase command
+allowed-tools: Read, Task, Grep, Bash(jq *)
+description: Integrated planning loop - interleaves questions and analysis
 context-commands:
   - name: spec_exists
     command: '[ -f .claude/spec.md ] && echo "true" || [ -f spec.md ] && echo "true" || echo "false"'
   - name: plan_exists
     command: '[ -f .claude/plan.md ] && echo "true" || echo "false"'
-  - name: plan_version
-    command: '[ -f .claude/plan.md ] && grep -oE "^# Plan \\(v[0-9.]+\\)" .claude/plan.md | grep -oE "v[0-9.]+" || echo "none"'
-  - name: ready_count
-    command: '[ -f .claude/plan.md ] && grep -c "\*\*Status:\*\* ready" .claude/plan.md || echo "0"'
-  - name: blocked_count
-    command: '[ -f .claude/plan.md ] && grep -c "\*\*Status:\*\* blocked" .claude/plan.md || echo "0"'
-  - name: analyzed_count
-    command: '[ -f .claude/plan.md ] && grep -c "\*\*Status:\*\* analyzed" .claude/plan.md || echo "0"'
   - name: open_questions
-    command: '[ -f .claude/questions.json ] && jq -r "to_entries | map(select(.value.status == \"open\")) | length" .claude/questions.json 2>/dev/null || echo "0"'
+    command: '[ -f .claude/questions.json ] && jq "if type == \"object\" then [.[] | select(type == \"object\" and .status == \"open\")] | length else 0 end" .claude/questions.json 2>/dev/null || echo "0"'
+  - name: plan_frozen
+    command: '[ -f .claude/plan.md ] && grep -q "^# Plan (v1.0)" .claude/plan.md && echo "true" || echo "false"'
 ---
 
-# Plan Workflow Router
+# Integrated Planning Loop
 
 ## Current State
 - Spec exists: !{spec_exists}
 - Plan exists: !{plan_exists}
-- Plan version: !{plan_version}
-- Ready tasks: !{ready_count}
-- Blocked tasks: !{blocked_count}
-- Analyzed tasks: !{analyzed_count}
+- Plan frozen: !{plan_frozen}
 - Open questions: !{open_questions}
 
-## What To Do Next
+## Preflight Checks
 
-Based on your current state, here's the next command to run:
+**If spec_exists is "false":**
+Stop: "No specification found. Run `/dev/spec` first."
 
-### If spec doesn't exist (!{spec_exists} = false):
+**If plan_exists is "false":**
+Stop: "No plan found. Run `/dev/plan/create` first."
+
+**If plan_frozen is "true":**
+Stop: "Plan is frozen at v1.0. Run `/dev/implement [ISSUE_NUMBER]` to start implementation."
+
+## CRITICAL: Anti-Improvisation Rules
+
+1. **NEVER substitute your own analysis for templates** - When instructed to load a template, you MUST Read it first
+2. **NEVER optimize the workflow** - Process ONE item then restart from Phase 1
+3. **NEVER skip phases** - Always check questions before tasks, even if you just processed a task
+4. **Templates are MANDATORY** - They contain GitHub updates, file modifications, and tracking that your improvisation will miss
+
+Improvising breaks the entire system. Follow the exact process.
+
+## Main Loop Algorithm
+
+The loop processes ONE item at a time then RESTARTS:
+- Process ONE question OR ONE task
+- Then immediately restart from Phase 1
+- Questions always get priority over tasks
+- Never batch or continue processing similar items
+
+WHILE work remains:
+
+### Phase 1: Check for Open Questions
+
+Use jq to check if any open questions exist in .claude/questions.json.
+If found:
+  1. Load first open question from .claude/questions.json using jq
+  2. Extract question details (text, context, options, affects)
+  3. Present question to user with clear format
+  4. Wait for user response (natural command pause)
+  5. Log answer in questions.json:
+     - status: "open" → "answered_pending_processing"
+     - user_choice: "Option X: [chosen option]"
+     - user_reasoning: "[any explanation provided]"
+     - answered_at: "$(date -Iseconds)"
+  6. YOU MUST FIRST:
+     - Read file: ~/.claude/commands/dev/plan/answer-handler-subagent.md
+     - If file not found, STOP and inform user
+     - Replace [QUESTION_ID] with actual Q-XXX value in the file contents
+     THEN launch sub-agent:
+     ```
+     Task tool:
+     - description: "Process answer for Q-XXX"
+     - subagent_type: "general-purpose"
+     - prompt: [The entire contents of the template file with replacements made]
+     ```
+  7. Wait for sub-agent completion
+  8. Continue to next question (loop back to Phase 1)
+
+### Phase 2: Check for Ready Tasks
+
+Use Grep tool with pattern "\*\*Status:\*\* ready" on .claude/plan.md:
+- output_mode: "content"
+- -B: 3 (to see task ID above the status line)
+- -A: 1 (for context)
+- head_limit: 5 (to get just the first ready task)
+If any matches found:
+  1. Find first ready task using Grep tool
+  2. Extract task ID and issue number
+  3. STATE: "Analyzing task T-XXX..."
+  4. YOU MUST FIRST:
+     - Read file: ~/.claude/commands/dev/plan/analyze-subagent.md (336 lines)
+     - If file not found, STOP and inform user
+     - Replace [TASK_ID] with actual T-XXX value in the file contents
+     - Replace [ISSUE_NUM] with actual issue number in the file contents
+     THEN launch sub-agent:
+     ```
+     Task tool:
+     - description: "Analyze T-XXX"
+     - subagent_type: "general-purpose"
+     - prompt: [The entire contents of the template file with replacements made]
+     ```
+  5. Wait for sub-agent completion
+  6. GO BACK TO PHASE 1 (Check for Open Questions)
+
+### Phase 3: Complete Planning
+
+If no open questions AND no ready tasks found:
+  - STATE: "✅ All tasks analyzed and questions answered!"
+  - Inform user: "Planning complete. Run `/dev/plan/complete` to finalize the plan to v1.0."
+  - Exit loop
+
+## Question Presentation Format
+
+When presenting a question to the user:
+
 ```
-❌ No specification found.
-👉 Run: /dev/spec
+## Question Q-XXX: [Question text]
+
+**Context:** [Why this decision matters]
+
+**Options:**
+1. **[Option 1 name]**
+   - Pros: [list pros]
+   - Cons: [list cons]
+
+2. **[Option 2 name]**
+   - Pros: [list pros]
+   - Cons: [list cons]
+
+[Additional options if present]
+
+**Affects tasks:**
+- T-XXX: [task title]
+- T-YYY: [task title]
+
+Which option should we choose? (Enter 1, 2, etc. or explain your preference)
 ```
 
-### If plan doesn't exist (!{plan_exists} = false):
+## Progress Tracking
+
+Provide clear status updates:
+- Before question: "📝 Found open question Q-XXX"
+- After answer: "Processing your decision..."
+- Before analysis: "🔍 Analyzing task T-XXX..."
+- After each iteration: "✓ Complete. Checking for more work..."
+
+## Session Tracking
+
+Each iteration creates session files:
+- Questions: `.claude/sessions/answer-Q-XXX-*.json`
+- Analysis: `.claude/sessions/analyze-T-XXX-*.json`
+
+These provide a complete audit trail of the planning process.
+
+## Why This Design
+
+1. **Interactive Flow:** Questions presented immediately as they emerge from analysis
+2. **Efficient Processing:** No redundant "blocked by Q-XXX" analysis cycles
+3. **Simple Main Loop:** Only handles user interaction and delegation
+4. **Complex Logic Isolated:** All processing logic in sub-agents
+5. **Natural Progression:** Answer question → unblock tasks → analyze them → find new questions
+
+## Workflow Comparison
+
+### Old Batch Workflow:
 ```
-📋 Ready to create initial plan from spec.
-👉 Run: /dev/plan/create
+create → analyze ALL → question ALL → analyze ALL → repeat
 ```
+- Many wasted analyses reporting "blocked"
+- User waits through long batch processing
+- Disconnected experience
 
-### If plan exists and version is not 1.0:
-
-#### If there are ready tasks (!{ready_count} > 0):
+### New Integrated Workflow:
 ```
-🔍 Need to analyze !{ready_count} ready tasks.
-👉 Run: /dev/plan/analyze
+create → (question → analyze → question → analyze → ...) → complete
 ```
+- Each question immediately unblocks work
+- User engaged throughout
+- Natural, interactive flow
 
-#### If there are open questions (!{open_questions} > 0):
-```
-❓ Need to answer !{open_questions} technical questions.
-👉 Run: /dev/plan/question
-```
+## Compatibility Note
 
-#### If all tasks analyzed and no questions (!{ready_count} = 0, !{open_questions} = 0):
-```
-✅ Ready to finalize the plan.
-👉 Run: /dev/plan/complete
-```
+The batch commands still exist for specific use cases:
+- `/dev/plan/analyze` - Process all ready tasks at once
+- `/dev/plan/question` - Process all questions at once
+- `/dev/plan/complete` - Finalize to v1.0 (still required)
 
-### If plan version is 1.0:
-```
-🎉 Plan is complete and frozen!
-👉 Run: /dev/implement [ISSUE_NUMBER]
-```
-
-## Plan Workflow Overview
-
-The planning process follows these phases:
-
-### 1. `/dev/plan/create` - Create Initial Plan
-- Parses specification
-- Builds Work Breakdown Structure (WBS)
-- Creates tasks with T-XXX IDs
-- Generates GitHub issues
-- **Output:** `.claude/plan.md` v0.1
-
-### 2. `/dev/plan/analyze` - Analyze Tasks
-- Reviews each "ready" task
-- Creates questions for technical decisions (Q-XXX)
-- Decomposes large tasks (>500 LOC)
-- Marks simple tasks as analyzed
-- **Output:** Questions in `.claude/questions.json`, updated task statuses
-
-### 3. `/dev/plan/question` - Answer Questions
-- Presents each open question with options
-- Creates Architecture Decision Records (ADRs)
-- Updates blocked tasks when decisions made
-- **Output:** ADRs in `.claude/ADRs/`, tasks unblocked
-
-### 4. `/dev/plan/complete` - Finalize Plan
-- Verifies all tasks analyzed
-- Updates version to v1.0 (frozen)
-- Generates completion summary
-- **Output:** Frozen plan ready for implementation
-
-## Workflow Cycles
-
-The workflow cycles between phases:
-```
-create → analyze → question → analyze → question → ... → complete
-```
-
-You'll alternate between analyzing tasks and answering questions until all tasks are analyzed and no questions remain.
-
-## Files Created
-
-- `.claude/plan.md` - Task breakdown structure
-- `.claude/questions.json` - Technical decisions needed
-- `.claude/ADRs/*.md` - Architecture Decision Records
-- GitHub Issues - One per task, linked as sub-issues
-
-## Quick Status Check
-
-Current recommendation based on your state:
-**👉 Next command: [Determined from context above]**
+But this integrated loop is the recommended approach for most planning work.

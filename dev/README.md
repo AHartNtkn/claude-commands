@@ -1,268 +1,168 @@
 # Development Workflow Commands
 
-A comprehensive set of Claude Code slash commands that implement a complete software development lifecycle, from requirements specification through implementation, review, and maintenance. These commands emphasize quality, traceability, and rigorous engineering practices.
+Commands for software development from requirements through implementation.
 
-## Overview
+## Quick Start
 
-This workflow system transforms software development into a systematic, traceable process:
+Starting a new project:
+```bash
+/spec                  # Define requirements interactively
+/plan/create          # Generate task breakdown from spec
+/plan                 # Resolve questions, analyze tasks (can stop/restart anytime)
+/implement [issue#]   # Implement a task with TDD (don't need full plan)
+```
 
-1. **`/spec`** - Create comprehensive Software Requirements Specifications
-2. **`/plan`** - Generate detailed work breakdown structures with GitHub integration
-3. **`/implement`** - Execute strict Test-Driven Development with automated PR creation
-4. **`/review`** - Perform multi-dimensional code quality analysis
-5. **`/respond`** - Systematically handle PR review feedback
-6. **`/walkthrough`** - Provide educational guided tours of code changes
+Continuing work:
+```bash
+/plan                 # Finds next question or task automatically
+/implement [issue#]   # Work on any analyzed task
+/review [PR#]         # Review code quality
+```
+
+## Commands
+
+### Planning
+- **`/spec`** - Interactive requirements specification
+- **`/plan/create`** - Generate initial task breakdown with GitHub issues
+- **`/plan`** - Interactive loop for questions and task analysis
+  - Presents technical questions for decisions
+  - Analyzes tasks to identify blockers and decompose large work
+  - Fully resumable - stop anytime, continues where left off
+- **`/plan/complete`** - Freeze plan at v1.0 (optional)
+
+### Implementation
+- **`/implement [issue#]`** - TDD implementation
+  - Red-Green-Refactor cycle enforcement
+  - Automatic branch creation and PR drafting
+  - Commit size limits for reviewability
+- **`/review [PR#]`** - Multi-dimensional code analysis
+  - Security, performance, maintainability checks
+  - Generates specific recommendations
+- **`/respond [PR#]`** - Handle review feedback systematically
+- **`/walkthrough [PR#]`** - Educational code tour with progressive disclosure
+
+## Common Workflows
+
+### Starting a New Feature
+```bash
+/spec                    # Define what you're building
+/plan/create            # Break it into tasks
+/plan                   # Answer a few questions, analyze some tasks
+# Stop when you have enough to start
+/implement [issue#]     # Start coding analyzed tasks
+```
+
+### Continuing Planning
+```bash
+/plan                   # Automatically finds next item needing attention
+# Ctrl+C to stop anytime
+# WARNING: Don't stop when a Task(###) is running, or you may end up with an inconsistent state that's hard to recover from.
+/plan                   # Resume later - picks up where you left off
+```
+
+### Parallel Work
+- Planning and implementation can happen simultaneously
+- Start implementing as soon as you have analyzed tasks
+- Continue planning in another terminal/session
+- No need to wait for complete analysis
+
+### Handling Blockers
+```bash
+/plan                   # Questions appear as they're discovered
+# Answer the question
+# Task automatically unblocks and becomes ready for analysis
+```
+
+## What Gets Created
+
+```
+.claude/
+├── spec.md                    # Requirements specification
+├── spec-state.json           # Structured spec data
+├── plan.md                   # Task breakdown (T-XXX tasks)
+├── questions.json            # Technical decisions (Q-XXX questions)
+├── ADRs/                     # Architecture Decision Records
+│   ├── ADR-001-*.md         # Decisions from answered questions
+│   └── ADR-002-*.md
+└── sessions/                 # Audit trail
+    ├── analyze-T-XXX-*.json  # Task analysis sessions
+    └── answer-Q-XXX-*.json   # Question resolution sessions
+
+# During implementation
+.review_analysis.md           # Review findings
+.review_response.md          # Response documentation
+```
+
+## Task and Question Flow
+
+1. **Tasks** start as `ready` → become `blocked` (if questions found) or `analyzed` (if clear)
+2. **Questions** start as `open` → become `answered` when resolved
+3. **Blocked tasks** become `ready` again when their questions are answered
+4. The `/plan` command automatically handles this flow
+
+## Troubleshooting
+
+### Spec too business oriented?
+It defaults this way because it mimics best practices for extracting a usable specification from a client, but, just be honest; Claude is smart enough to adjust and it will still work. You don't need to conform your answers to the questions to get a good result.
+
+### Planning stopped mid-way?
+Just run `/plan` again - it resumes automatically by finding the next item.
+
+### Want to implement before planning completes?
+Go ahead - implement any analyzed tasks. Planning doesn't need to be complete.
+
+### Need to see what's left to plan?
+Check `.claude/plan.md` for task statuses - `ready` tasks need analysis.
+
+### Session interrupted?
+Everything is saved in files. Just restart the command and it will find the correcct context.
 
 ## Prerequisites
 
 ### Required Tools
-- **GitHub CLI** (`gh`) - For issue and PR management
-- **Git** - For version control operations
-- **Testing Framework** - One of: npm/Jest, pytest, Go test, cargo test
-
-### Verification Commands
 ```bash
-gh --version && gh auth status  # Verify GitHub CLI
-git --version                   # Verify Git
-npm test                       # Verify test runner (or pytest/go test/cargo test)
+gh --version     # GitHub CLI for issues and PRs
+git --version    # Version control
+jq --version     # JSON processing for questions/decisions
+npm test         # Or your test runner (pytest, go test, cargo test)
 ```
 
-## Complete Development Workflow
-
-### Phase 1: Requirements Specification
+### First Time Setup
 ```bash
-/spec MyProject
+gh auth login    # Authenticate with GitHub
+gh extension install mintoolkit/gh-sub-issue  # For task hierarchy
 ```
-**What it does:**
-- Conducts interactive requirements interview following ISO 29148 and NASA SE standards
-- Uses EARS patterns for functional requirements with Gherkin acceptance criteria
-- Applies FURPS+ taxonomy for non-functional requirements
-- Implements MoSCoW prioritization with effort validation
-- Auto-generates review criteria and glossary from interview content
-- Creates parent GitHub issue and saves complete SRS to `.claude/spec.md`
 
-**Quality Gates:**
-- All requirements have unique IDs (FR-XXX, NFR-XXX) and measurable targets
-- 100% traceability to business objectives
-- Must-have requirements ≤60% of estimated effort
-- Every functional requirement has Gherkin scenarios
-- Every non-functional requirement has verification method
+## Tips
 
-### Phase 2: Work Breakdown Planning
-```bash
-/plan
-```
-**Prerequisites:** Requires existing `.claude/spec.md`
+- **Start small** - You don't need complete requirements to begin
+- **Implement early** - Start coding as soon as you have a few analyzed tasks
+- **Trust the loop** - `/plan` always finds the next important item
+- **Answer questions promptly** - They unblock the most work
+- **Review session files** - Complete audit trail in `.claude/sessions/`
+- **Claude Attention** - Claude gets lazy with long work sessions. Stop, clear, and restart planning when you see this.
 
-**What it does:**
-- Extracts scope and deliverables from specification
-- Creates hierarchical work breakdown structure following 100% rule
-- Generates stable task IDs (T-XXX format) with GitHub issue creation
-- Establishes requirement-to-task traceability matrix
-- Manages dependency relationships using sub-issue linking
-- Interactive refinement through targeted questions
+## Implementation Standards
 
-**Outputs:**
-- `.claude/plan.md` - Versioned planning document
-- GitHub issues for each task with sub-issue relationships
-- Traceability matrix ensuring complete requirement coverage
+### TDD Cycle (enforced by `/implement`)
+1. **Red** - Write failing test, verify it fails, commit test
+2. **Green** - Write minimal code to pass, commit implementation
+3. **Refactor** - Clean up without changing behavior, commit refactor
 
-### Phase 3: Test-Driven Implementation
-```bash
-/implement [ISSUE_NUMBER]
-```
-**What it does:**
-- Implements GitHub issues using strict Red-Green-Refactor TDD methodology
-- Creates feature branch with automated naming
-- Enforces small commits (≤200 LOC, ≤5 files)
-- Maintains deterministic, hermetic testing practices
-- Creates draft PR with acceptance criteria tracking
-- Performs baseline and final test validation with automatic rebasing
+### Commit Limits
+- ≤200 lines of code per commit
+- ≤5 files per commit
+- Automatic enforcement with clear messages
 
-**TDD Workflow:**
-1. **RED:** Write minimal failing test, verify failure, commit test only
-2. **GREEN:** Implement minimal production code to pass, commit implementation
-3. **REFACTOR:** Clean up without changing behavior, commit refactor
-4. **REPEAT:** Until all acceptance criteria are met
-
-**Quality Controls:**
-- Automatic test framework detection (npm/pytest/go/cargo)
-- Pre-commit hook integration for formatting/linting
-- Continuous integration with main branch
-- Clean working tree enforcement
-
-### Phase 4: Comprehensive Review
-```bash
-/review [PR_NUMBER]
-```
-**What it does:**
-- Performs algorithmic code quality analysis using specialized sub-agents
-- Executes explicit security vulnerability checks (OWASP Top 10)
-- Analyzes performance patterns, complexity metrics, and SOLID principles
-- Cross-references changes against project specifications and standards
-- Generates actionable recommendations with specific code fixes
-
-**Review Dimensions:**
-- **Correctness:** Error handling, resource management, concurrency
-- **Security:** Injection prevention, access control, cryptographic issues
-- **Performance:** Database patterns, algorithm complexity, resource usage
-- **Maintainability:** Complexity metrics, SOLID principles, DRY violations
-- **Testing:** Coverage analysis, test quality assessment
-
-### Phase 5: Systematic Response Management
-```bash
-/respond [PR_NUMBER]
-```
-**What it does:**
-- Categorizes review feedback by priority (Critical/High/Medium/Low)
-- Addresses critical and high-priority issues directly in the PR
-- Creates detailed GitHub issues for deferred medium-priority items
-- Validates feedback against project standards and specifications
-- Documents all decisions and maintains response traceability
-
-**Response Categories:**
-- **MUST FIX NOW:** Blocks merge, addressed immediately
-- **SHOULD FIX NOW:** High priority, fixed before merge
-- **CREATE FOLLOW-UP ISSUE:** Medium priority, tracked separately
-- **OPTIONAL/FUTURE:** Low priority suggestions
-- **DISPUTED:** Clarified with architectural reasoning
-
-### Phase 6: Educational Understanding
-```bash
-/walkthrough [PR_NUMBER]
-```
-**What it does:**
-- Provides guided, educational exploration of PR changes
-- Combines comprehensive review findings with pedagogical explanations
-- Uses progressive disclosure with multiple depth levels
-- Organizes changes into semantic chunks for optimal comprehension
-- Maintains interactive state for session resumption
-
-**Navigation Features:**
-- Executive, developer, and deep-dive explanation levels
-- Semantic chunking respecting cognitive load limits
-- Interactive navigation (continue, back, jump, search)
-- Contextual review integration showing both fixes and new issues
-- Persistent session state for interrupted walkthroughs
-
-## File Structure and Artifacts
-
-The workflow creates and maintains several key files:
-
-```
-.claude/
-├── spec.md                    # Complete SRS document
-├── spec-state.json           # Structured specification data
-├── spec-v1.0.md             # Versioned specification backup
-├── plan.md                   # Work breakdown structure
-├── .walkthrough-state.json   # Interactive session state
-├── .review-findings.json     # Comprehensive review results
-└── ADRs/                     # Architecture Decision Records
-    ├── ADR-001-*.md
-    └── ADR-002-*.md
-
-# Generated during workflow
-.review_analysis.md          # Categorized review feedback
-.review_response.md         # Response documentation
-.gh_pr_body.md             # PR template with acceptance criteria
-.gh_context.md             # Implementation context summary
-```
+### Test Requirements
+- Tests must be deterministic (no real network/filesystem/time)
+- Tests must be isolated (proper mocks/stubs)
+- Tests must fail before implementation (Red phase)
 
 ## GitHub Integration
 
-### Issue Management
-- **Parent Issues:** Created from specifications for epic tracking
-- **Task Issues:** Generated from work breakdown with T-XXX identifiers
-- **Sub-Issue Relationships:** Maintained using `gh sub-issue` for hierarchy
-- **Follow-up Issues:** Created from deferred review feedback
-
-### Pull Request Lifecycle
-- **Draft PRs:** Created early with acceptance criteria checklists
-- **Review Integration:** Automated posting of comprehensive review reports
-- **Response Tracking:** Documented feedback handling with issue links
-- **Merge Policies:** Enforced completion of acceptance criteria
-
-## Quality Standards
-
-### Test-Driven Development
-- **Red-Green-Refactor:** Strict adherence to TDD cycles
-- **Deterministic Tests:** No real network/time/filesystem dependencies
-- **Hermetic Testing:** Isolated tests using mocks/fakes/stubs
-- **Small Commits:** Atomic changes with clear intent
-
-### Code Quality
-- **Complexity Limits:** Cyclomatic complexity ≤10, functions ≤20 lines
-- **SOLID Principles:** Enforced through automated analysis
-- **Security Standards:** OWASP Top 10 vulnerability prevention
-- **Performance Patterns:** Database optimization, algorithm efficiency
-
-### Documentation Standards
-- **Requirements Traceability:** Every implementation traced to requirements
-- **Architectural Decisions:** Documented in ADR format
-- **Review Criteria:** Auto-generated from specifications
-- **Glossary Management:** Automated term extraction and definition
-
-## Best Practices
-
-### Getting Started
-1. Start every project with `/spec` to establish clear requirements
-2. Use `/plan` to create structured work breakdown before implementation
-3. Implement one issue at a time using `/implement` for TDD discipline
-4. Use `/review` for comprehensive quality analysis on every PR
-5. Apply `/respond` systematically to handle all review feedback
-6. Use `/walkthrough` for knowledge transfer and code education
-
-### Workflow Discipline
-- **Never skip specifications** - All implementation should trace to documented requirements
-- **Maintain small PRs** - Each PR should address one coherent issue
-- **Address all feedback** - Use systematic categorization and tracking
-- **Keep tests green** - Continuous validation with automatic rebasing
-- **Document decisions** - Use ADRs for architectural choices
-
-### Quality Gates
-- **Specification:** All requirements have IDs, priorities, and acceptance criteria
-- **Planning:** Complete traceability matrix, no orphaned requirements
-- **Implementation:** All tests pass, acceptance criteria met
-- **Review:** All critical and high-priority issues resolved
-- **Response:** All feedback categorized, deferred items have issues
-
-## Advanced Features
-
-### Specialized Sub-Agents
-The system uses specialized AI agents for focused analysis:
-- **File Analyzer:** Summarizes verbose outputs and logs
-- **Code Analyzer:** Traces logic flow and identifies vulnerabilities
-- **Test Runner:** Executes and analyzes test results
-- **Review Agents:** Perform domain-specific quality analysis
-
-### Progressive Disclosure
-The walkthrough system adapts to user needs:
-- **Executive Level:** Business impact focus for stakeholders
-- **Developer Level:** Balanced technical explanation
-- **Deep Dive Level:** Line-by-line analysis for learning
-
-### State Management
-Persistent state enables workflow resumption:
-- **Specification State:** Structured JSON with all requirement data
-- **Planning State:** Version-controlled plan with change history
-- **Walkthrough State:** Session progress for interrupted learning
-- **Review State:** Comprehensive findings for integration
-
-## Integration with Project Standards
-
-### Specification Integration
-- Requirements checked against project constraints and standards
-- Review criteria auto-generated from specification NFRs
-- Acceptance criteria integrated into PR templates
-
-### Architecture Integration
-- ADR (Architecture Decision Record) creation and maintenance
-- Consistency checking against existing architectural decisions
-- Cross-cutting concern analysis across all changed files
-
-### Testing Integration
-- Framework auto-detection (npm/pytest/go/cargo)
-- Coverage target enforcement from specification
-- Test strategy validation against implementation
-
-This workflow system transforms ad-hoc development into a systematic, quality-focused process that maintains complete traceability from business requirements through implementation and maintenance.
+- **Issues** - Created automatically from tasks (T-XXX)
+- **Sub-issues** - Linked to show task decomposition
+- **PRs** - Draft created early with acceptance criteria
+- **Labels** - 'blocked' added/removed automatically
+- **Comments** - Architecture decisions posted when questions answered

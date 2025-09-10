@@ -189,6 +189,37 @@ Each command:
 - Completes phase entirely
 - Tells user next command
 
+## Command Workflow Design Principles
+
+### Explicit Phase Integration
+Never rely on vague instructions like "consider X when deciding" or "identify Y during analysis". Create dedicated numbered phases with specific steps and clear deliverables.
+
+❌ **Vague:** "Consider performance implications when choosing algorithms"  
+✅ **Explicit:** "Phase 3: Performance Analysis - examine each algorithm option for time/space complexity"
+
+❌ **Implicit:** "Identify technical decisions needed"
+✅ **Explicit:** "Phase 2: Technical Decision Discovery" with systematic examination checklist
+
+### Priority Through Placement  
+Phase order communicates importance and ensures critical work isn't skipped:
+- Blocking conditions/prerequisites → Phase 1
+- Core required analysis → Phase 2-3  
+- Optional/conditional work → Later phases
+
+### Early Exit Patterns
+Check blocking conditions immediately with explicit exit rules:
+```bash
+Phase 1: Check existing blockers → Exit to PATH A if found
+Phase 2: Check for new blockers → Exit to PATH A if found
+Phase 3: Proceed with main analysis only if no blockers
+```
+
+### Session Integration Requirement
+Every major workflow step must update session/state files for audit trails and resumability. Don't just track final outcomes - track the decision-making process.
+
+**Why These Principles Matter:**
+Commands that say "consider X" without dedicated phases for that consideration will have that consideration done by gut feeling, inconsistently, or skipped entirely. Explicit phases with clear deliverables ensure systematic execution.
+
 ## Command Design Principles
 
 ### Resource References
