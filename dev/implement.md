@@ -80,40 +80,160 @@ Implement the feature in issue #\$ARGUMENTS with test-driven development (tests 
 
 ```
 
-### 2) Gather context from spec and sub-issues
-1. Review spec context from initial context section above (requirements, test strategy, review criteria)
-2. Review sub-issues from context (!{subissues_json})
-3. For each completed sub-issue with merged PRs:
+### 2) Comprehensive Context Discovery
+This phase ensures you understand the complete context before implementation.
+
+#### 2.1) Create Session Tracking File
+Create `.claude/sessions/implement-$ARGUMENTS-$(date +%Y%m%d_%H%M%S).json`:
+```json
+{
+  "issue_number": "$ARGUMENTS",
+  "start_time": "$(date -Iseconds)",
+  "status": "context_gathering",
+  "task_id": null,
+  "parent_hierarchy": [],
+  "dependencies_analyzed": [],
+  "adrs_read": [],
+  "acceptance_criteria": [],
+  "progress": {}
+}
+```
+
+#### 2.2) Trace Parent Task Hierarchy
+1. Read `.claude/plan.md` to find the task ID (T-XXX) for this issue
+2. Trace the parent hierarchy all the way to the top:
+   ```bash
+   # Find task ID for this issue
+   TASK_ID=$(grep -E "T-[0-9]+.*\[Issue #$ARGUMENTS\]" .claude/plan.md | grep -oE "T-[0-9]+" | head -1)
+   
+   # Build parent hierarchy by following Parent: fields
+   CURRENT_TASK=$TASK_ID
+   while [ -n "$CURRENT_TASK" ]; do
+     # Extract parent task
+     PARENT=$(grep -A10 "$CURRENT_TASK" .claude/plan.md | grep "Parent:" | sed 's/.*Parent: *//' | grep -oE "T-[0-9]+" | head -1)
+     # Add to hierarchy tracking
+     echo "Task $CURRENT_TASK -> Parent: ${PARENT:-ROOT}"
+     CURRENT_TASK=$PARENT
+   done
+   ```
+3. For each task in the hierarchy, understand its purpose and how it contributes to the overall goal
+
+#### 2.3) Read and Apply ALL Relevant ADRs
+1. List all ADRs and read them:
+   ```bash
+   # Find all ADRs
+   ADR_FILES=$(ls .claude/ADRs/ADR-*.md 2>/dev/null || echo "")
+   
+   if [ -n "$ADR_FILES" ]; then
+     echo "=== Reading Architecture Decision Records ==="
+     for ADR in $ADR_FILES; do
+       echo "Reading: $ADR"
+       # Read the ADR using Read tool
+       # Extract decisions that affect this task
+       # Add to architectural constraints list
+     done
+   else
+     echo "No ADRs found"
+   fi
+   ```
+2. For each ADR:
+   - Read it completely using Read tool
+   - Identify if it affects this task (check "Affected Tasks" section)
+   - Extract specific implementation guidance
+   - Add constraints to session file
+
+#### 2.4) Analyze ALL Dependency Implementations
+1. Extract dependencies from plan.md for this task
+2. For EACH dependency task:
+   ```bash
+   # Get dependency issue numbers
+   DEPS=$(grep -A20 "$TASK_ID" .claude/plan.md | grep "Dependencies:" | sed 's/.*Dependencies: *//')
+   
+   for DEP in $DEPS; do
+     if [[ $DEP == T-* ]]; then
+       # Find issue number for dependency
+       DEP_ISSUE=$(grep "$DEP.*\[Issue #" .claude/plan.md | grep -oE "#[0-9]+" | sed 's/#//')
+       
+       # Find and analyze merged PRs
+       echo "=== Analyzing dependency $DEP (Issue #$DEP_ISSUE) ==="
+       
+       # Use Task tool for comprehensive analysis
+       # Task: "Analyze PR implementation for issue #$DEP_ISSUE and extract:
+       #        - Key APIs and interfaces created
+       #        - Design patterns used
+       #        - Test strategies employed
+       #        - Conventions established"
+     fi
+   done
+   ```
+3. Use Task tool with file-analyzer sub-agent for each dependency PR to extract:
+   - APIs and interfaces created that this task will use
+   - Patterns and conventions to follow
+   - Test strategies that worked well
+
+#### 2.5) Review Completed Sub-issues
+For each completed sub-issue with merged PRs:
    ```bash
    # Get sub-issue numbers
-   SUBISSUE_NUMS=$(cat .gh_subissues.json | jq -r '.[] | select(.state == "CLOSED") | .number')
+   SUBISSUE_NUMS=$(echo '!{subissues_json}' | jq -r '.[] | select(.state == "CLOSED") | .number')
    
-   # For each sub-issue, find and review its PRs
    for SUBISSUE in $SUBISSUE_NUMS; do
      echo "=== Reviewing sub-issue #$SUBISSUE ==="
      
      # Find PRs that reference this sub-issue
      gh pr list --state merged --search "in:body #$SUBISSUE" --json number,title,mergedAt --limit 10 > .gh_pr_list_$SUBISSUE.json
      
-     # For each PR, get the full diff and implementation details
+     # For each PR, use Task tool for deep analysis
      PR_NUMS=$(cat .gh_pr_list_$SUBISSUE.json | jq -r '.[].number')
      for PR in $PR_NUMS; do
-       echo "  - PR #$PR:"
-       # Get PR details including files changed
-       gh pr view $PR --json title,body,files,additions,deletions
-       # Get the actual diff to understand implementation
-       gh pr diff $PR
+       # Task: "Review PR #$PR implementation and extract patterns"
      done
    done
    ```
-4. Synthesize learnings from reviewed PRs and spec:
-   - Implementation patterns used
-   - Test strategies employed (cross-reference with spec test strategy)
-   - Dependencies or APIs introduced
-   - Design decisions made
-   - Acceptance criteria from spec that apply to this issue
-   - Review criteria that will be used for the PR
-5. Save context summary to `.gh_context.md` for reference during implementation
+
+#### 2.6) Synthesize Complete Context
+Create `.claude/context-$ARGUMENTS.md` with:
+```markdown
+# Implementation Context for Issue #$ARGUMENTS
+
+## Task Hierarchy
+- Root Goal: [from spec]
+- Parent Chain: [T-001 → T-005 → T-023]
+- This Task: T-XXX - [purpose]
+
+## Architectural Constraints (from ADRs)
+- ADR-001: Must use [specific decision]
+- ADR-002: Follow [specific pattern]
+
+## Building On (from dependencies)
+- T-XXX (PR #Y): Provides [APIs/interfaces]
+- T-YYY (PR #Z): Established [patterns]
+
+## Patterns to Follow (from sub-issues)
+- Testing: [specific approach seen]
+- Error handling: [established pattern]
+- API design: [conventions used]
+
+## Implementation Approach
+Based on all context:
+1. [Specific approach following ADRs]
+2. [Using APIs from dependencies]
+3. [Following patterns from related work]
+```
+
+#### 2.7) Update Session File
+Update the session file with all discovered context:
+```json
+{
+  ...previous fields...,
+  "status": "context_complete",
+  "task_id": "T-XXX",
+  "parent_hierarchy": ["T-001", "T-005", "T-023"],
+  "dependencies_analyzed": ["T-010", "T-015"],
+  "adrs_read": ["ADR-001", "ADR-002"],
+  "architectural_constraints": [...],
+  "implementation_approach": "..."
+}
 
 ### 2.5) Consult development plan
 1. Read `.claude/plan.md` using Read tool
@@ -202,37 +322,74 @@ When plan updates are needed during implementation:
 6. Stop and inform user: "Plan updated - run `/plan` to continue" or "Questions added - run `/plan` to continue"
 
 ### 9) TDD loop (repeat per acceptance criterion)
+
+#### 9.1) Check Session for Resume Point
+If resuming from a previous session:
+```bash
+# Check for existing session files
+LATEST_SESSION=$(ls -t .claude/sessions/implement-$ARGUMENTS-*.json 2>/dev/null | head -1)
+if [ -n "$LATEST_SESSION" ]; then
+  echo "Found previous session: $LATEST_SESSION"
+  # Extract progress and continue from last completed criterion
+fi
+```
+
+#### 9.2) Track Progress Per Criterion
+For each acceptance criterion, update session file:
+```json
+{
+  ...previous fields...,
+  "acceptance_criteria": [
+    {"id": 1, "description": "...", "status": "completed"},
+    {"id": 2, "description": "...", "status": "in_progress"},
+    {"id": 3, "description": "...", "status": "pending"}
+  ],
+  "current_criterion": 2
+}
+```
+
+#### 9.3) Red-Green-Refactor Cycle
+
 **RED**
 1. Select next acceptance criterion to implement
-2. **Pre-flight check**: Can you write a meaningful test for this behavior?
+2. Update session: Mark criterion as "in_progress"
+3. **Pre-flight check**: Can you write a meaningful test for this behavior?
+   - Check against architectural constraints from ADRs
+   - Verify dependencies provide needed APIs
    - If foundational work is missing → Use plan update procedure and stop
    - If architectural choice needed → Use plan update procedure and stop
    - If clear what to test → proceed
-3. Write smallest failing test that demonstrates the desired behavior
-4. Verify test fails for the right reason: run `$TEST_CMD`
-5. Commit **only the test**:
+4. Write smallest failing test that demonstrates the desired behavior
+5. Verify test fails for the right reason: run `$TEST_CMD`
+6. Commit **only the test**:
    - Stage precisely the test files
    - `git commit -m "test(#$ARGUMENTS): <short behavior>"`
+7. Update session: Mark phase as "red_complete"
 
 **GREEN**
-6. **Implementation check**: Is the approach to make this test pass clear?
+8. **Implementation check**: Is the approach to make this test pass clear?
+   - Verify approach aligns with ADR decisions
+   - Use patterns from dependency implementations
    - If missing foundation work → Use plan update procedure and stop
    - If multiple approaches with significant trade-offs → Use plan update procedure and stop
    - If straightforward → proceed
-7. Write minimal code to pass the test
-8. Run `$TEST_CMD` until green
-9. Commit implementation:
-   `git commit -a -m "feat(#$ARGUMENTS): <minimal implementation>"`
+9. Write minimal code to pass the test
+10. Run `$TEST_CMD` until green
+11. Commit implementation:
+    `git commit -a -m "feat(#$ARGUMENTS): <minimal implementation>"`
+12. Update session: Mark phase as "green_complete"
 
 **REFACTOR**
-10. Improve internals without changing behavior. Run formatters/linters if configured (e.g., `pre-commit run -a`).
-11. Run `$TEST_CMD`.
-12. Commit refactor:  
+13. Improve internals without changing behavior. Run formatters/linters if configured (e.g., `pre-commit run -a`).
+14. Run `$TEST_CMD`.
+15. Commit refactor:  
     `git commit -a -m "refactor: <cleanup, no behavior change>"`
+16. Update session: Mark criterion as "completed"
 
 **Housekeeping**
-13. Review staged diff before each commit: `git diff --staged`. If you need to adjust a prior commit, use fixups and autosquash:  
+17. Review staged diff before each commit: `git diff --staged`. If you need to adjust a prior commit, use fixups and autosquash:  
     - `git commit --fixup=<SHA>` then `git rebase --autosquash "$DEFAULT_BRANCH"`
+18. Update session file with completed criterion
 
 ### 10) Draft PR early if spec is ambiguous (recommended)
 - Create a draft PR to get feedback after the first failing test commit if criteria are unclear:  
@@ -257,3 +414,24 @@ When plan updates are needed during implementation:
 - Do **not** merge unless every acceptance-criteria checkbox is ticked and tests are green.
 - If the repo uses squash-merge, ensure the PR title follows **Conventional Commits**.
 - After merge into the default branch, confirm the linked issue auto-closed. If not, update PR body with closing keyword and re-merge or push a new commit.
+
+### 14) Finalize Session
+Update session file with completion status:
+```json
+{
+  ...all previous fields...,
+  "status": "completed",
+  "end_time": "$(date -Iseconds)",
+  "pr_number": "[PR number created]",
+  "all_criteria_completed": true,
+  "adrs_followed": ["ADR-001", "ADR-002"],
+  "patterns_from_dependencies": ["API pattern from T-010", "Test pattern from T-015"]
+}
+```
+
+This session file provides a complete audit trail of:
+- What context was gathered before implementation
+- Which ADRs were followed
+- What patterns were reused from dependencies
+- Progress through each acceptance criterion
+- Final PR created

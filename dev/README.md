@@ -111,6 +111,12 @@ Just run `/plan` again - it resumes automatically by finding the next item.
 ### Want to implement before planning completes?
 Go ahead - implement any analyzed tasks. Planning doesn't need to be complete.
 
+### Question answer unclear?
+Talk it out with Claude! Ask for the implications of each choice, ask for example code snippets, ask for intuitive illustrations. You can answer after a conversation; neither you nor the AI are rigid scripts!
+
+### Question is malformed?
+Tell Claude! This is the great thing of having an AI workflow; you can ask for changes any time.
+
 ### Need to see what's left to plan?
 Check `.claude/plan.md` for task statuses - `ready` tasks need analysis.
 

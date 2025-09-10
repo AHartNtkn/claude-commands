@@ -56,30 +56,81 @@ Being vague is CORRECT. Being specific without approval is WRONG.
      "title": "[task title from plan.md]",
      "dependencies": [list from step 3],
      "acceptance_criteria": "[from plan.md]",
-     "previous_analysis": "[summary of any previous session findings, or null if first analysis]"
+     "previous_analysis": "[summary of any previous session findings, or null if first analysis]",
+     "dependency_tree": [],
+     "answered_questions_reviewed": [],
+     "adrs_consulted": [],
+     "architectural_guidance_found": null
    }
    ```
 
-## PHASE 2: CHECK FOR EXISTING BLOCKING QUESTIONS
+## PHASE 2: REVIEW ARCHITECTURAL FOUNDATION
 
-BEFORE any new analysis, check if this task is already blocked by unanswered questions:
+CRITICAL: Check if architectural decisions are already made that guide this task.
+
+### 2.1) Build Complete Dependency Tree
+1. Start with your direct dependencies from Phase 1
+2. For EACH dependency, recursively trace its dependencies:
+   ```
+   T-044 depends on → T-043
+   T-043 depends on → T-010, T-015
+   T-010 depends on → T-005
+   etc. until reaching root tasks
+   ```
+3. Build complete list of ALL tasks in your dependency tree
+
+### 2.2) Review ALL Answered Questions
+1. Read ALL questions from questions.json with status "answered"
+2. For each answered question:
+   - Check if it affects ANY task in your dependency tree
+   - Check if it establishes patterns for your task's domain
+   - Extract architectural guidance that applies to your task
+3. Read corresponding ADRs for answered questions:
+   - If Q-XXX has "adr": "ADR-XXX", read that ADR
+   - Extract specific implementation guidance
+
+### 2.3) Architectural Consistency Check
+Review the answered questions and ADRs you found. Ask yourself:
+- Does any existing decision directly determine how I should implement this task?
+- Would my task's implementation naturally follow from an established pattern?
+- Am I about to create a question for something that's already been decided?
+
+**CRITICAL RULE**: If existing architectural decisions answer ALL technical choices needed for this task → Skip directly to PATH C with that guidance. Only create questions for technical decisions that are genuinely NOT covered by existing ADRs and answered questions.
+
+### 2.4) Update Session with Architectural Review
+Update session file with discovered architectural context:
+```json
+{
+  ...previous fields...,
+  "dependency_tree": ["T-043", "T-010", "T-015", "T-005", ...],
+  "answered_questions_reviewed": ["Q-001", "Q-003", ...],
+  "adrs_consulted": ["ADR-001-cospan-encoding", ...],
+  "architectural_guidance_found": "Q-003 established direct cospan objects pattern"
+}
+```
+
+## PHASE 2B: CHECK FOR EXISTING BLOCKING QUESTIONS
+
+Only AFTER reviewing architectural foundation:
 
 1. **Search questions.json** for any open questions (status: "open") that might block this task
 2. **Check task dependencies** - if your task dependencies include Q-XXX references, verify their status
 3. **Early blocking rule**: If ANY relevant open questions exist → immediately go to PATH A (BLOCKED)
 
-If no existing blocking questions found, proceed to Phase 3.
+If no existing blocking questions found AND no sufficient architectural guidance found, proceed to Phase 3.
 
 ## PHASE 3: TECHNICAL DECISION DISCOVERY
 
 CRITICAL: Technical clarity comes before complexity estimation.
+CRITICAL: Only create questions for genuinely NEW architectural territory.
 
 For each acceptance criterion from your task:
 
 1. **Systematic Examination**:
    - Break down criterion into required components
    - For each component ask: "Are there 2+ valid technical approaches?"
-   - If YES → requires question
+   - THEN ask: "Has this been decided already in answered questions/ADRs?"
+   - Only if YES to first AND NO to second → requires question
 
 2. **Decision Categories to Check**:
    - Algorithm choices (search, sort, traversal methods)  
@@ -89,6 +140,8 @@ For each acceptance criterion from your task:
    - Performance trade-offs (space vs time, accuracy vs speed)
 
 3. **Question Creation Rules**:
+   - FIRST: Verify this isn't already answered in dependency tree's questions
+   - NEVER create questions that contradict established patterns
    - ONE decision per question (never bundle)
    - Specific options listed ("A vs B vs C" not "what approach")
    - Individual Q-XXX IDs
@@ -203,8 +256,13 @@ Criteria:
 - Phase 2-3: No blocking questions found or created, AND
 - Phase 4: Total estimated LOC < 500
 
+This includes two scenarios:
+1. Task has no technical ambiguities (straightforward implementation)
+2. Task's technical decisions are already covered by existing ADRs/answered questions
+
 Prepare (don't execute yet):
-- SPECIFIC implementation guidance (algorithms, files, tests)
+- Implementation guidance based on architectural decisions from Phase 2
+- Reference relevant ADRs and answered questions that guide implementation
 - Plan to change status to 'analyzed'
 
 ## PHASE 6: EXECUTE ALL CHANGES
@@ -259,36 +317,34 @@ gh issue edit [ISSUE_NUM] --body "
 Must complete first:
 - [ ] #[dep_issue] T-XXX: [dep name]
 
+## Architectural Guidance
+[Reference ADRs and answered questions that guide this implementation]
+- Follows ADR-XXX: [specific guidance from ADR]
+- Applies Q-XXX decision: [how the decision affects this task]
+
 ## Implementation Approach
-[Describe WHAT needs to be accomplished, not HOW]
-CORRECT: "Implement data validation that ensures type safety"
-WRONG: "Use Zod library for validation with recursive schema checking"
+[Describe WHAT needs to be accomplished, following architectural guidance]
+- [Functional requirement aligned with ADR decisions]
+- [Component structure following established patterns]
 
 ## Key Components
-[List functional requirements, not technical solutions]
-CORRECT: "Data storage layer with query capability"
-WRONG: "PostgreSQL database with indexed B-tree queries"
+[List what to build, referencing architectural decisions where applicable]
 
 ## Files to Create/Modify
-[General areas only, no specific technical choices]
-CORRECT: "Storage module, validation logic, API endpoints"
-WRONG: "Redis cache layer, Joi validators, Express routes"
+[List files/modules to create or modify, using technical choices from ADRs where applicable]
 
 ## Testing Requirements
-[What to test, not how to test]
-CORRECT: "Verify data validation rejects invalid inputs"
-WRONG: "Use Jest with snapshot testing and mocks"
+[What to test, following patterns from dependencies if discovered]
 
 [Original task description from current body]"
 ```
 
 CRITICAL FOR PATH C:
-- NO specific algorithm names (just "sorting algorithm" not "quicksort")
-- NO specific data structure names (just "storage mechanism" not "hashmap")
-- NO specific pattern names (just "event handling" not "observer pattern")
-- NO specific library/tool names
-- If you write ANY specific technical choice, you have FAILED
-- Being vague about unchosen implementations is CORRECT
+- DO specify technical choices that come from ADRs and answered questions
+- DO NOT make NEW technical choices that haven't been decided
+- If ADR-001 chose PostgreSQL → say "PostgreSQL" not "database"
+- If Q-003 chose direct cospan objects → say "direct cospan objects" not "data structure"
+- Only be vague about choices that genuinely haven't been made yet
 
 ### 3. Finalize session file
 

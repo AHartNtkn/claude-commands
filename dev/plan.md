@@ -107,7 +107,6 @@ If any matches found:
 
 If no open questions AND no ready tasks found:
   - STATE: "✅ All tasks analyzed and questions answered!"
-  - Inform user: "Planning complete. Run `/dev/plan/complete` to finalize the plan to v1.0."
   - Exit loop
 
 ## Question Presentation Format
@@ -153,37 +152,3 @@ Each iteration creates session files:
 
 These provide a complete audit trail of the planning process.
 
-## Why This Design
-
-1. **Interactive Flow:** Questions presented immediately as they emerge from analysis
-2. **Efficient Processing:** No redundant "blocked by Q-XXX" analysis cycles
-3. **Simple Main Loop:** Only handles user interaction and delegation
-4. **Complex Logic Isolated:** All processing logic in sub-agents
-5. **Natural Progression:** Answer question → unblock tasks → analyze them → find new questions
-
-## Workflow Comparison
-
-### Old Batch Workflow:
-```
-create → analyze ALL → question ALL → analyze ALL → repeat
-```
-- Many wasted analyses reporting "blocked"
-- User waits through long batch processing
-- Disconnected experience
-
-### New Integrated Workflow:
-```
-create → (question → analyze → question → analyze → ...) → complete
-```
-- Each question immediately unblocks work
-- User engaged throughout
-- Natural, interactive flow
-
-## Compatibility Note
-
-The batch commands still exist for specific use cases:
-- `/dev/plan/analyze` - Process all ready tasks at once
-- `/dev/plan/question` - Process all questions at once
-- `/dev/plan/complete` - Finalize to v1.0 (still required)
-
-But this integrated loop is the recommended approach for most planning work.
