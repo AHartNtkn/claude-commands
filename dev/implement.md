@@ -44,9 +44,18 @@ context-commands:
    - Run: `git diff --quiet && git diff --cached --quiet || { echo "Working tree dirty"; exit 1; }`
 3. Sync and detect default branch:
    - Run: `git fetch --all --prune`
-   - Determine `DEFAULT_BRANCH`:
-     - Try: `DEFAULT_BRANCH="$(git remote show origin | sed -n 's/.*HEAD branch: //p')"`
-     - If empty: `DEFAULT_BRANCH="$(git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|^origin/||')"`
+   - Determine `DEFAULT_BRANCH` with robust fallback:
+     ```bash
+     DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p' || echo "")
+     if [ -z "$DEFAULT_BRANCH" ]; then
+       DEFAULT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || echo "")
+     fi
+     if [ -z "$DEFAULT_BRANCH" ]; then
+       DEFAULT_BRANCH="main"  # Fallback to common default
+       echo "Warning: Could not detect default branch, using 'main'"
+     fi
+     echo "Using default branch: $DEFAULT_BRANCH"
+     ```
    - Run: `git checkout "$DEFAULT_BRANCH" && git pull --ff-only`
 
 ### 1) Read the issue and extract acceptance criteria
@@ -84,20 +93,28 @@ Implement the feature in issue #\$ARGUMENTS with test-driven development (tests 
 This phase ensures you understand the complete context before implementation.
 
 #### 2.1) Create Session Tracking File
-Create `.claude/sessions/implement-$ARGUMENTS-$(date +%Y%m%d_%H%M%S).json`:
-```json
-{
-  "issue_number": "$ARGUMENTS",
-  "start_time": "$(date -Iseconds)",
-  "status": "context_gathering",
-  "task_id": null,
-  "parent_hierarchy": [],
-  "dependencies_analyzed": [],
-  "adrs_read": [],
-  "acceptance_criteria": [],
-  "progress": {}
-}
-```
+1. Capture timestamp and create session filename:
+   ```bash
+   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+   SESSION_FILE=".claude/sessions/implement-$ARGUMENTS-${TIMESTAMP}.json"
+   echo "Creating session: $SESSION_FILE"
+   ```
+
+2. Create session file using Write tool with the path from $SESSION_FILE variable:
+   ```json
+   {
+     "issue_number": "$ARGUMENTS",
+     "created_at": "[current ISO timestamp]",
+     "updated_at": "[current ISO timestamp]",
+     "status": "context_gathering",
+     "task_id": null,
+     "parent_hierarchy": [],
+     "dependencies_analyzed": [],
+     "adrs_read": [],
+     "acceptance_criteria": [],
+     "progress": {}
+   }
+   ```
 
 #### 2.2) Trace Parent Task Hierarchy
 1. Read `.claude/plan.md` to find the task ID (T-XXX) for this issue
@@ -326,11 +343,14 @@ When plan updates are needed during implementation:
 #### 9.1) Check Session for Resume Point
 If resuming from a previous session:
 ```bash
-# Check for existing session files
+# Check for most recent session file for this issue
 LATEST_SESSION=$(ls -t .claude/sessions/implement-$ARGUMENTS-*.json 2>/dev/null | head -1)
 if [ -n "$LATEST_SESSION" ]; then
   echo "Found previous session: $LATEST_SESSION"
-  # Extract progress and continue from last completed criterion
+  # Read the session file using Read tool to extract progress
+  # Continue from last completed criterion
+else
+  echo "No previous session found, starting fresh"
 fi
 ```
 
@@ -416,12 +436,13 @@ For each acceptance criterion, update session file:
 - After merge into the default branch, confirm the linked issue auto-closed. If not, update PR body with closing keyword and re-merge or push a new commit.
 
 ### 14) Finalize Session
-Update session file with completion status:
-```json
-{
-  ...all previous fields...,
-  "status": "completed",
-  "end_time": "$(date -Iseconds)",
+Update session file with completion status using Edit tool (use the $SESSION_FILE path from earlier):
+   ```json
+   {
+     ...all previous fields...,
+     "status": "completed",
+     "completed_at": "[current ISO timestamp]",
+     "updated_at": "[current ISO timestamp]",
   "pr_number": "[PR number created]",
   "all_criteria_completed": true,
   "adrs_followed": ["ADR-001", "ADR-002"],

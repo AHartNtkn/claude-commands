@@ -38,20 +38,27 @@ Being vague is CORRECT. Being specific without approval is WRONG.
    - Use Grep tool: pattern "T-XXX.*Issue #[0-9]*" on .claude/plan.md to find issue number
    - Get its title from plan.md
 7. Check for previous analysis sessions:
-   Look for existing .claude/sessions/analyze-[TASK_ID]-*.json files
-   If found, read the most recent one to understand:
+   ```bash
+   ls -t .claude/sessions/analyze-[TASK_ID]-*.json 2>/dev/null | head -5 || echo "No existing sessions"
+   ```
+   If found, read the most recent one using Read tool to understand:
    - What analysis was previously done
    - What path was chosen and why
    - What questions were created or what decomposition occurred
    - Why this task might be "ready" again (questions answered? subtasks completed?)
 
 8. Create session tracking file:
-   Create .claude/sessions/analyze-[TASK_ID]-$(date +%Y%m%d_%H%M%S).json with:
+   ```bash
+   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+   SESSION_FILE=".claude/sessions/analyze-[TASK_ID]-${TIMESTAMP}.json"
+   echo "Creating session: $SESSION_FILE"
+   ```
+   Then create the session file using Write tool with the path from $SESSION_FILE variable:
    ```json
    {
      "task_id": "[TASK_ID]",
      "issue_number": "[ISSUE_NUM]",
-     "start_time": "$(date -Iseconds)",
+     "created_at": "[current ISO timestamp]",
      "status": "in_progress",
      "title": "[task title from plan.md]",
      "dependencies": [list from step 3],
@@ -195,7 +202,7 @@ You MUST perform and document this analysis (only if no questions found in Phase
 CRITICAL: You must complete ALL three analyses above before proceeding to Phase 5.
 
 4. **UPDATE SESSION FILE** with complexity analysis:
-   Update .claude/sessions/analyze-[TASK_ID]-*.json to add:
+   Update the session file (use Edit tool with the $SESSION_FILE path) to add:
    ```json
    {
      ...previous fields...,
@@ -348,7 +355,7 @@ CRITICAL FOR PATH C:
 
 ### 3. Finalize session file
 
-Update .claude/sessions/analyze-[TASK_ID]-*.json with final results:
+Update the session file (use Edit tool with the $SESSION_FILE path) with final results:
 ```json
 {
   ...previous fields...,

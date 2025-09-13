@@ -30,11 +30,16 @@ Process answered question [QUESTION_ID] from .claude/questions.json
    - Record task title for later reference
 
 4. Create session tracking file:
-   Create .claude/sessions/answer-[QUESTION_ID]-$(date +%Y%m%d_%H%M%S).json with:
+   ```bash
+   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+   SESSION_FILE=".claude/sessions/answer-[QUESTION_ID]-${TIMESTAMP}.json"
+   echo "Creating session: $SESSION_FILE"
+   ```
+   Then create the session file using Write tool with the path from $SESSION_FILE variable:
    ```json
    {
      "question_id": "[QUESTION_ID]",
-     "start_time": "$(date -Iseconds)",
+     "created_at": "[current ISO timestamp]",
      "user_choice": "[from questions.json]",
      "user_reasoning": "[from questions.json]",
      "affects_tasks": [list from step 3],
@@ -129,7 +134,7 @@ FOR EACH task that was updated in Phase 4:
 
 ## PHASE 6: FINALIZE SESSION
 
-Update .claude/sessions/answer-[QUESTION_ID]-*.json:
+Update the session file (use Edit tool with the $SESSION_FILE path):
 ```json
 {
   ...previous fields...,

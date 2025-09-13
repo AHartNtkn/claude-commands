@@ -28,79 +28,225 @@ context-commands:
 - Spec requirements: !{spec_requirements}
 - Review criteria: !{review_criteria}
 
+## CRITICAL INSTRUCTION: NO PRIORITY JUDGMENTS
+
+This command has ONE rule: **FIX ALL FEEDBACK or PROVE IT'S WRONG**.
+
+You are NOT allowed to:
+- Assess whether feedback is "critical" or "minor"
+- Decide what's "important" vs "unimportant"
+- Categorize issues by severity
+- Make ANY priority judgments
+
+Every single piece of feedback gets fixed unless you can provide concrete evidence it's factually incorrect.
+
 ## Review Analysis
 
-### 1) Categorize Review Feedback
+### 1) Initialize Verification Session
 
-Based on the latest review comment and review threads from context above, create a categorized list:
+1. Capture timestamp and create session filename:
+   ```bash
+   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+   SESSION_FILE=".claude/sessions/respond-PR-$ARGUMENTS-${TIMESTAMP}.json"
+   echo "Creating session: $SESSION_FILE"
+   ```
 
-Create `.review_analysis.md` with this structure:
-```markdown
-# Review Analysis for PR #[NUMBER]
-
-## Critical Issues (Block Merge)
-- [ ] Issue 1: [Description]
-  - File: [path:line]
-  - Reviewer comment: [quote]
-  - Action: MUST FIX NOW
-
-## High Priority (Should Fix)
-- [ ] Issue 2: [Description]
-  - File: [path:line]
-  - Reviewer comment: [quote]
-  - Action: SHOULD FIX NOW
-
-## Medium Priority (Can Defer)
-- [ ] Issue 3: [Description]
-  - File: [path:line]
-  - Reviewer comment: [quote]
-  - Action: CREATE FOLLOW-UP ISSUE
-  - Justification for deferral: [reason]
-
-## Low Priority Suggestions
-- [ ] Suggestion 1: [Description]
-  - File: [path:line]
-  - Reviewer comment: [quote]
-  - Action: OPTIONAL / FUTURE WORK
-
-## Invalid/Disputed Feedback
-- [ ] Disputed 1: [Description]
-  - Reviewer comment: [quote]
-  - Why invalid: [explanation with reference to standards]
-  - Action: ADD CLARIFYING COMMENT
+2. Create session file using Write tool with the path from $SESSION_FILE variable:
+   ```json
+   {
+     "pr_number": "$ARGUMENTS",
+     "created_at": "[current ISO timestamp]",
+     "updated_at": "[current ISO timestamp]",
+  "status": "project_understanding",
+  
+  "project_context": {
+    "core_purpose": null,
+    "domain": null,
+    "technology_stack": null,
+    "specialized_requirements": [],
+    "spec_refs_reviewed": [],
+    "adrs_reviewed": []
+  },
+  
+  "feedback_items": [],
+  
+  "verification_complete": false,
+  "implementation_allowed": false
+}
 ```
 
-### 2) Verify Against Standards
+Note: The SESSION_FILE variable contains the path to the current session file.
 
-1. Review spec requirements and review criteria from context above
+### 2) Understand Project Context
 
-2. Check other project documentation:
+Before analyzing any feedback, populate the project_context in the session file:
+
+1. **Read specification** (`.claude/spec.md` or `spec.md`):
+   - Extract core purpose and domain
+   - Note specialized requirements (performance, precision, domain-specific needs)
+   - Document technology choices
+
+2. **Review Architecture Decision Records**:
    ```bash
-   # Check other project docs
-   for doc in .claude/ADRs/*.md ARCHITECTURE.md CONTRIBUTING.md docs/standards.md; do
-     if [ -f "$doc" ]; then
-       echo "Checking against: $doc"
-       # Review recommendations against documented standards
+   for adr in .claude/ADRs/ADR-*.md; do
+     if [ -f "$adr" ]; then
+       # Read and extract relevant architectural decisions
      fi
    done
    ```
 
-3. For each recommendation, verify:
-   - Does it align with spec requirements (FR-*/NFR-*)?
-   - Does it meet the defined review criteria from spec?
-   - Does it align with architectural decisions (ADRs)?
-   - Does it follow project conventions?
-   - Is it consistent with existing patterns?
-   - Would it break existing functionality?
-   - Does it maintain the test coverage targets from spec?
+3. **Update session** with project understanding:
+   ```json
+   "project_context": {
+     "core_purpose": "[What this project does]",
+     "domain": "[Problem domain]",
+     "technology_stack": "[Languages, frameworks, libraries]",
+     "specialized_requirements": ["List any special requirements"],
+     "spec_refs_reviewed": ["spec sections reviewed"],
+     "adrs_reviewed": ["ADR-001", "ADR-002"]
+   },
+   "status": "feedback_analysis"
+   ```
 
-4. Update `.review_analysis.md` with findings
+### 3) Analyze and Classify Feedback
+
+**DEFAULT BEHAVIOR: Fix ALL feedback about code in this PR.**
+
+**MANDATORY: Every feedback item has exactly THREE possible outcomes:**
+1. **FIX** - Make code changes to address it (DEFAULT)
+2. **DISPUTE** - With CONCRETE EVIDENCE proving it's factually wrong
+3. **DEFER** - ONLY if it's about code not touched by this PR or genuinely unrelated to the PR's purpose (must show evidence)
+
+**NO OTHER OPTIONS EXIST. NO EXCEPTIONS.**
+
+Only skip feedback if you can PROVE:
+1. It's factually incorrect (show the evidence)
+2. It contradicts a documented decision (cite the ADR/spec)
+3. It's about code not modified in this PR (show the diff)
+4. It's unrelated to what this PR is fixing (show PR description/issue)
+
+**VIOLATION WARNING: If you use ANY of these words/phrases, you are FAILING:**
+- "critical" / "non-critical" / "criticality"
+- "minor" / "major" / "severity"
+- "low priority" / "high priority"
+- "architectural concern" vs "bug"
+- "not important" / "can be deferred"
+- "should be addressed later"
+- "already resolved the critical issues"
+
+**INVALID EXCUSES (NEVER acceptable):**
+- "This is more of an architectural concern than a critical bug"
+- "This isn't critical"
+- "The critical issues have been resolved"
+- "This can be addressed in a follow-up"
+- "This is a minor issue"
+- "This seems low priority"
+
+**DEFAULT ACTION FOR ALL FEEDBACK: FIX IT**
+The burden of proof is on YOU to show why NOT to fix something.
+
+For each piece of review feedback:
+
+1. **Add to session.feedback_items**:
+   ```json
+   {
+     "id": "F001",
+     "reviewer_comment": "[exact quote]",
+     "scope": "in-pr|out-of-pr",
+     "action": "fix|dispute|defer-to-existing|create-issue",
+     "evidence": null,
+     "defer_to": null,
+     "implementation_status": "pending"
+   }
+   ```
+
+2. **Determine scope**:
+   - Is this about code changed in this PR? → `scope: "in-pr"`
+   - Is this about other code? → `scope: "out-of-pr"`
+   Check the PR diff to verify what was actually changed.
+
+3. **Determine action (DEFAULT IS TO FIX)**:
+   - For `in-pr` feedback:
+     - Can you fix it? → `action: "fix"` (DEFAULT)
+     - Is it factually wrong? → `action: "dispute"` (REQUIRES EVIDENCE)
+   - For `out-of-pr` feedback:
+     - Does an existing task/issue cover this? → `action: "defer-to-existing"`
+     - Is it a new concern not covered? → `action: "create-issue"` (RARE)
+     - Is it not applicable? → `action: "dispute"` (with explanation)
+
+   **Dispute ONLY with concrete evidence**:
+   ```json
+   "evidence": "Test output shows all tests pass: [paste output]"
+   "evidence": "File exists at src/auth.js:45, not missing"
+   "evidence": "ADR-003 explicitly chose synchronous processing"
+   "evidence": "This code is in main branch, not changed in PR"
+   ```
+
+4. **Mark verification complete** when all items verified:
+   ```json
+   "verification_complete": true,
+   "implementation_allowed": true
+   ```
+
+### 4) Generate Review Analysis
+
+Create `.review_analysis.md` based on session data:
+
+```markdown
+# Review Analysis for PR #[NUMBER]
+
+## Feedback to Fix
+[All items with action: "fix" - these will be implemented]
+
+## Disputed Feedback
+[Items with action: "dispute" - include concrete evidence]
+
+## Out of Scope - Deferred to Existing Issues
+[Items with action: "defer-to-existing" - note which issue/task]
+
+## Out of Scope - New Issues Needed
+[Items with action: "create-issue" - truly new concerns not covered elsewhere]
+```
 
 ## Implementation
 
-### 3) Address Critical and High Priority Issues
+### 5) Verification Gate Check
 
-For each issue marked as MUST FIX NOW or SHOULD FIX NOW:
+Before implementing any fixes, verify the session is complete:
+
+```bash
+# Verify session file exists (use the SESSION_FILE variable from earlier)
+if [ ! -f "$SESSION_FILE" ]; then
+  echo "ERROR: Session file $SESSION_FILE not found. Must complete verification first."
+  exit 1
+fi
+
+VERIFIED=$(jq -r '.verification_complete' "$SESSION_FILE")
+ALLOWED=$(jq -r '.implementation_allowed' "$SESSION_FILE")
+
+if [ "$VERIFIED" != "true" ] || [ "$ALLOWED" != "true" ]; then
+  echo "ERROR: Verification incomplete. Review session file: $SESSION_FILE"
+  echo "Verification complete: $VERIFIED"
+  echo "Implementation allowed: $ALLOWED"
+  exit 1
+fi
+
+echo "✓ Verification complete. Proceeding with implementation."
+```
+
+### 6) Fix All Feedback Items
+
+For each feedback item marked with action: "fix" in the session file:
+
+```bash
+# Get items to implement from session
+ITEMS_TO_FIX=$(jq -r '.feedback_items[] | select(.action == "fix") | "\(.id): \(.reviewer_comment)"' "$SESSION_FILE")
+
+# Update session as you implement each item
+jq '.feedback_items[] | select(.id == "F001") | .implementation_status = "in_progress"' "$SESSION_FILE" > tmp.json && mv tmp.json "$SESSION_FILE"
+```
+
+For each issue to implement:
 
 1. Create a test that demonstrates the issue (if applicable):
    ```bash
@@ -125,11 +271,37 @@ For each issue marked as MUST FIX NOW or SHOULD FIX NOW:
    - [Why this fixes the issue]"
    ```
 
-### 4) Create Follow-up Issues
+### 7) Handle Out-of-Scope Items
 
-For each issue marked as CREATE FOLLOW-UP ISSUE:
+For each feedback item with action: "create-issue" in the session:
 
-1. Create a detailed GitHub issue:
+1. **First check if an existing task/issue covers this**:
+   ```bash
+   # Search plan.md for related tasks
+   grep -i "[relevant keywords]" .claude/plan.md
+
+   # Search existing GitHub issues
+   gh issue list --search "[relevant keywords]"
+   ```
+
+2. **If an existing task/issue covers it**:
+   - Add a comment to the PR: "This will be addressed in issue #XXX [title]"
+   - Update the existing issue with a note about this feedback if needed
+   - DO NOT create a duplicate issue
+
+3. **Only if truly not covered anywhere**:
+
+1. **Update the specified task in plan.md**:
+   ```bash
+   # Get the task ID from session
+   DEFER_TASK=$(jq -r '.feedback_items[] | select(.id == "F001") | .defer_to_task' "$SESSION_FILE")
+   
+   # Add requirement to task's acceptance criteria in plan.md
+   # Using Edit tool, add to the task's acceptance criteria:
+   # "- [From PR #XXX review]: [specific requirement from feedback]"
+   ```
+
+2. If creating a new task (when no existing task fits), create GitHub issue:
    ```bash
    ISSUE_TITLE="[Follow-up from PR #$PR_NUM] [Description]"
    ISSUE_BODY="## Context
@@ -271,11 +443,13 @@ gh pr comment "$PR_NUM" --body-file .review_response.md
 ### 9) Validation Checklist
 
 Before considering the response complete:
+- [ ] Session file shows verification_complete: true
+- [ ] All feedback items have verification_status != "pending"
 - [ ] All critical issues addressed or have detailed justification
 - [ ] All high priority issues addressed or converted to issues
+- [ ] All deferred items added to plan.md tasks or new issues created
 - [ ] Tests pass with changes
 - [ ] No regressions introduced
-- [ ] Follow-up issues created and linked
 - [ ] Response documented and posted
 - [ ] Code comments added where confusion existed
 - [ ] PR updated with current status
