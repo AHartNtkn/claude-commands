@@ -11,6 +11,10 @@ context-commands:
     command: 'PR="${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"; gh pr view "$PR" --comments --json comments | jq -r ".comments[-1].body // empty"'
   - name: review_threads
     command: 'PR="${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"; gh api "repos/:owner/:repo/pulls/$PR/comments" --paginate 2>/dev/null || echo "[]"'
+  - name: pr_diff_files
+    command: 'PR="${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"; gh pr diff "$PR" --name-only | grep -v "\.claude/sessions/"'
+  - name: pr_diff_full
+    command: 'PR="${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"; gh pr diff "$PR" | awk "/^diff --git.*\\.claude\\/sessions\\// { skip=1; next } /^diff --git/ { skip=0 } skip==0"'
   - name: plan_exists
     command: '[ -f .claude/plan.md ] && echo "true" || echo "false"'
   - name: spec_requirements
@@ -24,21 +28,25 @@ context-commands:
 - PR Details: !{pr_context}
 - Latest Review Comment: !{latest_review}
 - Review Threads: !{review_threads}
+- Files Changed in PR: !{pr_diff_files}
 - Plan exists: !{plan_exists}
 - Spec requirements: !{spec_requirements}
 - Review criteria: !{review_criteria}
 
-## CRITICAL INSTRUCTION: NO PRIORITY JUDGMENTS
+## Full PR Diff
+!{pr_diff_full}
 
-This command has ONE rule: **FIX ALL FEEDBACK or PROVE IT'S WRONG**.
+## CRITICAL INSTRUCTION: INVESTIGATE BEFORE CLASSIFYING
+
+This command has ONE rule: **INVESTIGATE FIRST, THEN FIX or PROVE WRONG WITH EVIDENCE**.
 
 You are NOT allowed to:
-- Assess whether feedback is "critical" or "minor"
-- Decide what's "important" vs "unimportant"
-- Categorize issues by severity
-- Make ANY priority judgments
+- Classify feedback without reading the actual code
+- Dispute claims without showing contradicting code
+- Defer items without proving they weren't touched in this PR
+- Make assumptions based on general programming knowledge
 
-Every single piece of feedback gets fixed unless you can provide concrete evidence it's factually incorrect.
+Every piece of feedback requires investigation. Default to FIX unless evidence proves otherwise.
 
 ## Review Analysis
 
@@ -108,85 +116,116 @@ Before analyzing any feedback, populate the project_context in the session file:
    "status": "feedback_analysis"
    ```
 
-### 3) Analyze and Classify Feedback
+### 3) Sequential Feedback Investigation
 
-**DEFAULT BEHAVIOR: Fix ALL feedback about code in this PR.**
+**Process feedback items ONE AT A TIME. Complete each investigation before moving to the next.**
 
-**MANDATORY: Every feedback item has exactly THREE possible outcomes:**
-1. **FIX** - Make code changes to address it (DEFAULT)
-2. **DISPUTE** - With CONCRETE EVIDENCE proving it's factually wrong
-3. **DEFER** - ONLY if it's about code not touched by this PR or genuinely unrelated to the PR's purpose (must show evidence)
+#### Step 3.1: Build Feedback List
 
-**NO OTHER OPTIONS EXIST. NO EXCEPTIONS.**
+Parse review comments and list ALL feedback items in session:
+```json
+"feedback_items": [
+  {"id": "F001", "reviewer_comment": "[exact quote]", "status": "pending"},
+  {"id": "F002", "reviewer_comment": "[exact quote]", "status": "pending"},
+  {"id": "F003", "reviewer_comment": "[exact quote]", "status": "pending"}
+]
+```
 
-Only skip feedback if you can PROVE:
-1. It's factually incorrect (show the evidence)
-2. It contradicts a documented decision (cite the ADR/spec)
-3. It's about code not modified in this PR (show the diff)
-4. It's unrelated to what this PR is fixing (show PR description/issue)
+#### Step 3.2: Investigation Loop
 
-**VIOLATION WARNING: If you use ANY of these words/phrases, you are FAILING:**
-- "critical" / "non-critical" / "criticality"
-- "minor" / "major" / "severity"
-- "low priority" / "high priority"
-- "architectural concern" vs "bug"
-- "not important" / "can be deferred"
-- "should be addressed later"
-- "already resolved the critical issues"
+FOR each feedback item with status: "pending":
 
-**INVALID EXCUSES (NEVER acceptable):**
-- "This is more of an architectural concern than a critical bug"
-- "This isn't critical"
-- "The critical issues have been resolved"
-- "This can be addressed in a follow-up"
-- "This is a minor issue"
-- "This seems low priority"
+1. STATE: "Investigating F001: [first 50 chars of comment]..."
 
-**DEFAULT ACTION FOR ALL FEEDBACK: FIX IT**
-The burden of proof is on YOU to show why NOT to fix something.
+2. Complete ALL investigation steps:
+   - Locate the code
+   - Check if file was modified in PR
+   - Read the implementation
+   - Validate the claim
+   - Classify based on evidence
 
-For each piece of review feedback:
+3. Update session with investigation results
 
-1. **Add to session.feedback_items**:
-   ```json
-   {
-     "id": "F001",
-     "reviewer_comment": "[exact quote]",
-     "scope": "in-pr|out-of-pr",
-     "action": "fix|dispute|defer-to-existing|create-issue",
-     "evidence": null,
-     "defer_to": null,
-     "implementation_status": "pending"
-   }
-   ```
+4. STATE: "F001 investigated. Moving to next item."
 
-2. **Determine scope**:
-   - Is this about code changed in this PR? → `scope: "in-pr"`
-   - Is this about other code? → `scope: "out-of-pr"`
-   Check the PR diff to verify what was actually changed.
+5. Continue to next pending item
 
-3. **Determine action (DEFAULT IS TO FIX)**:
-   - For `in-pr` feedback:
-     - Can you fix it? → `action: "fix"` (DEFAULT)
-     - Is it factually wrong? → `action: "dispute"` (REQUIRES EVIDENCE)
-   - For `out-of-pr` feedback:
-     - Does an existing task/issue cover this? → `action: "defer-to-existing"`
-     - Is it a new concern not covered? → `action: "create-issue"` (RARE)
-     - Is it not applicable? → `action: "dispute"` (with explanation)
+When no pending items remain: STATE: "All feedback investigated."
 
-   **Dispute ONLY with concrete evidence**:
-   ```json
-   "evidence": "Test output shows all tests pass: [paste output]"
-   "evidence": "File exists at src/auth.js:45, not missing"
-   "evidence": "ADR-003 explicitly chose synchronous processing"
-   "evidence": "This code is in main branch, not changed in PR"
-   ```
+#### Step 3.3: Investigation Requirements (per item)
 
-4. **Mark verification complete** when all items verified:
-   ```json
-   "verification_complete": true,
-   "implementation_allowed": true
-   ```
+For the CURRENT item only (not all items at once):
+
+**A. LOCATE THE CODE**
+```bash
+# Find the specific code location mentioned
+# Record exact file:line or "could not locate"
+```
+Update session: `"location_found": "src/foo.ts:45-60"`
+
+**B. CHECK PR SCOPE**
+```bash
+# Check if this file appears in pr_diff_files
+echo "Checking if [filename] was modified in PR..."
+grep [filename] # (from pr_diff_files context)
+```
+Update session: `"pr_touched": true/false, "diff_evidence": "A src/foo.ts"`
+
+**C. READ IMPLEMENTATION**
+```bash
+# Use Read tool on the specific file and lines
+Read [file] [start_line] [end_line]
+```
+Update session: `"code_examined": "implements X pattern at lines Y-Z"`
+
+**D. VALIDATE CLAIM**
+Compare what reviewer said vs what code actually does.
+Update session: `"claim_validation": "reviewer correct: [specific issue found]"`
+
+**E. CLASSIFY WITH EVIDENCE**
+
+**DEFAULT = FIX** (unless evidence shows otherwise)
+
+Classification rules:
+- If claim validated AND file in PR → `action: "fix"`
+- If claim false (show contradicting code) → `action: "dispute"`
+- If file NOT in PR (show diff proof) → `action: "defer"`
+
+Update session with complete investigation record:
+```json
+{
+  "id": "F001",
+  "reviewer_comment": "[original]",
+  "status": "investigated",
+  "investigation": {
+    "location_found": "src/foo.ts:45",
+    "pr_touched": true,
+    "diff_evidence": "M src/foo.ts",
+    "code_examined": "null check missing",
+    "claim_validation": "reviewer correct"
+  },
+  "action": "fix",
+  "evidence": "Investigation confirms missing null check at line 45"
+}
+```
+
+#### Step 3.4: Required Progress Statements
+
+You MUST output these statements to prove sequential processing:
+- Before each item: `"Processing feedback item X of Y..."`
+- After investigation: `"Item X complete. Investigation recorded."`
+- After all items: `"All Y items investigated."`
+
+**VIOLATION**: If these statements are missing or out of order, you have violated the algorithm.
+
+#### Step 3.5: Completion Verification
+
+Only after ALL items show status: "investigated":
+```json
+"verification_complete": true,
+"implementation_allowed": true,
+"processing_complete": true
+```
 
 ### 4) Generate Review Analysis
 
