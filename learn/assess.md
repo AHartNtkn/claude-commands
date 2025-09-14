@@ -1,20 +1,7 @@
 ---
-allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(python3:*), Bash(git:*)
+allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(python3:*), Bash(git:*), Bash(if:*), Bash([:*), Bash(echo:*), Bash(date:*), Bash(sed:*)
 argument-hint: [SKILL_ID_OR_AUTO]
 description: Adaptive skill assessment using CAT with IRT item selection and BKT mastery classification
-context-commands:
-  - name: current_skill
-    command: 'if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi'
-  - name: skill_state
-    command: 'SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL].state // \"NOT_FOUND\"" .claude/learn/skills.json'
-  - name: student_theta
-    command: 'SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".skill_estimates[$SKILL].theta // .global_metrics.global_theta // 0.0" .claude/learn/student.json'
-  - name: available_items
-    command: 'SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL].item_bank | (.trivial // []) + (.easy // []) + (.realistic // []) | length" .claude/learn/skills.json'
-  - name: mastery_config
-    command: 'jq -r ".mastery_criteria | {threshold, successive_relearning_sessions}" .claude/learn/config.json'
-  - name: session_id
-    command: 'date +"%Y%m%d_%H%M%S" | sed "s/^/session_/"'
 ---
 
 # /learn/assess $ARGUMENTS
@@ -23,12 +10,12 @@ context-commands:
 Conduct adaptive skill assessment using Computerized Adaptive Testing (CAT) with Item Response Theory (IRT) item selection and Bayesian Knowledge Tracing (BKT) for mastery classification. This command implements research-grounded assessment that drives the mastery learning stack algorithm.
 
 ## Initial Context
-- Target skill: !{current_skill}
-- Current skill state: !{skill_state}  
-- Student θ estimate: !{student_theta}
-- Available items: !{available_items}
-- Mastery criteria: !{mastery_config}
-- Generated session ID: !{session_id}
+- Target skill: !`if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi`
+- Current skill state: !`SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL].state // \"NOT_FOUND\"" .claude/learn/skills.json`
+- Student θ estimate: !`SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".skill_estimates[$SKILL].theta // .global_metrics.global_theta // 0.0" .claude/learn/student.json`
+- Available items: !`SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL].item_bank | (.trivial // []) + (.easy // []) + (.realistic // []) | length" .claude/learn/skills.json`
+- Mastery criteria: !`jq -r ".mastery_criteria | {threshold, successive_relearning_sessions}" .claude/learn/config.json`
+- Generated session ID: !`date +"%Y%m%d_%H%M%S" | sed "s/^/session_/"`
 
 ## Assessment Algorithm Overview
 
@@ -46,19 +33,21 @@ Conduct adaptive skill assessment using Computerized Adaptive Testing (CAT) with
 #### 1.1 Skill and Context Validation
 ```bash
 # Validate skill exists and get assessment readiness
-SKILL_ID="!{current_skill}"
+SKILL_ID=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi)
 
 if [ "$SKILL_ID" = "none" ]; then
     echo "ERROR: No skill to assess. Run /learn/start to initialize learning domain."
     exit 1
 fi
 
-if [ "!{skill_state}" = "NOT_FOUND" ]; then
+SKILL_STATE=$(SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL].state // \"NOT_FOUND\"" .claude/learn/skills.json)
+if [ "$SKILL_STATE" = "NOT_FOUND" ]; then
     echo "ERROR: Skill $SKILL_ID not found in skills.json"
     exit 1
 fi
 
-if [ "!{available_items}" = "0" ]; then
+AVAILABLE_ITEMS=$(SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".current_focus // .stack[0] // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL].item_bank | (.trivial // []) + (.easy // []) + (.realistic // []) | length" .claude/learn/skills.json)
+if [ "$AVAILABLE_ITEMS" = "0" ]; then
     echo "WARNING: No items available for $SKILL_ID. Generating item bank first."
     # Trigger item generation (simplified for now)
 fi
@@ -86,7 +75,7 @@ Create session tracking structure:
 ```python
 # Use Task tool to initialize CAT assessment
 session_data = {
-    "session_id": "!{session_id}",
+    "session_id": "$(date +"%Y%m%d_%H%M%S" | sed "s/^/session_/")",
     "skill_id": skill_id,
     "assessment_type": "CAT_DIAGNOSTIC",
     "start_time": datetime.utcnow().isoformat(),
@@ -108,7 +97,7 @@ Implement Maximum Fisher Information (MFI) with exposure control:
 You are implementing a CAT assessment engine. Follow this algorithm precisely:
 
 **Input Parameters:**
-- Current θ estimate: !{student_theta}
+- Current θ estimate: From student.json for this skill
 - Available items with IRT parameters from skill item bank
 - Max items: 12, Min items: 3
 - Precision target: SE(θ) < 0.30
@@ -244,7 +233,7 @@ jq --arg skill "$SKILL_ID" '
     "action": "ASSESSED", 
     "result": "MASTERED",
     "timestamp": (now | strftime("%Y-%m-%dT%H:%M:%SZ")),
-    "session_id": "!{session_id}"
+    "session_id": "$(date +"%Y%m%d_%H%M%S" | sed "s/^/session_/")"
   }]
 ' .claude/learn/stack.json > .claude/learn/stack_temp.json
 ```
@@ -271,13 +260,13 @@ For skills classified as UNREADY, identify missing prerequisites:
 ```markdown
 **Agent Prompt for Skill Decomposition:**
 
-The student failed to demonstrate mastery of: "!{current_skill}"
+The student failed to demonstrate mastery of: "$SKILL_ID"
 
 **Assessment Results:**
-- Final θ: !{final_theta}
-- Mastery probability: !{mastery_probability}  
-- Response accuracy: !{accuracy}
-- Items attempted: !{item_count}
+- Final θ: [calculated value]
+- Mastery probability: [calculated value]
+- Response accuracy: [calculated value]
+- Items attempted: [calculated value]
 
 **Task:** Identify 2-4 prerequisite skills that must be mastered before this skill can be learned.
 
@@ -324,9 +313,10 @@ done
 #### 6.1 Comprehensive Session Recording
 Create detailed session log:
 ```bash
-cat > .claude/learn/sessions/!{session_id}.json << EOF
+SESSION_ID=$(date +"%Y%m%d_%H%M%S" | sed "s/^/session_/")
+cat > .claude/learn/sessions/${SESSION_ID}.json << EOF
 {
-  "session_id": "!{session_id}",
+  "session_id": "${SESSION_ID}",
   "skill_id": "$SKILL_ID",
   "session_type": "CAT_ASSESSMENT",
   "start_time": "$START_TIME", 
@@ -379,7 +369,7 @@ mv .claude/learn/student_temp.json .claude/learn/student.json
 
 #### 7.1 Assessment Report Generation
 ```markdown
-# Assessment Report: !{current_skill}
+# Assessment Report: $SKILL_ID
 
 ## Results Summary  
 - **Classification**: MASTERED | UNREADY | DECOMPOSE_NEEDED
@@ -391,7 +381,7 @@ mv .claude/learn/student_temp.json .claude/learn/student.json
 - **Confidence Calibration**: XX% accuracy
 
 ## Assessment Details
-- **Session ID**: !{session_id}
+- **Session ID**: ${SESSION_ID}
 - **Duration**: XX minutes
 - **Stopping Criterion**: Precision target | Item limit | Information exhaustion
 - **CAT Efficiency**: XX% reduction vs. fixed-length test
@@ -419,7 +409,7 @@ Ready for next assessment cycle or teaching phase.
 #### 7.2 Git Integration
 ```bash
 git add .claude/learn/
-git commit -m "assess: evaluated $SKILL_ID → $CLASSIFICATION (!{session_id})
+git commit -m "assess: evaluated $SKILL_ID → $CLASSIFICATION (${SESSION_ID})
 
 Assessment Results:
 - Mastery probability: $MASTERY_PROB (BKT)

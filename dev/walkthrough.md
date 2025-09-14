@@ -1,36 +1,19 @@
 ---
-allowed-tools: Task, Bash(gh:*), WebFetch, Read, Grep, Glob, Edit, Write
+allowed-tools: Task, Bash(gh:*), WebFetch, Read, Grep, Glob, Edit, Write, Bash([:*), Bash(echo:*), Bash(grep:*), Bash(jq:*), Bash(cat:*), Bash(bash -c:*), Bash(~/.claude/commands/dev/filter-diff.sh:*)
 argument-hint: [pr-number]
 description: Interactive PR walkthrough with comprehensive review and guided explanation using progressive disclosure
-context-commands:
-  - name: pr_metadata
-    command: 'gh pr view $ARGUMENTS --json number,title,body,url,headRefName,baseRefName,additions,deletions,changedFiles,files'
-  - name: changed_files
-    command: 'gh pr diff $ARGUMENTS --name-only'
-  - name: pr_diff
-    command: 'gh pr diff $ARGUMENTS'
-  - name: spec_exists
-    command: '[ -f .claude/spec.md ] && echo "true" || echo "false"'
-  - name: spec_requirements
-    command: '[ -f .claude/spec.md ] && grep -E "FR-|NFR-" .claude/spec.md || echo ""'
-  - name: review_criteria
-    command: '[ -f .claude/spec-state.json ] && jq ".review_criteria" .claude/spec-state.json || echo "{}"'
-  - name: pr_commits
-    command: 'gh pr view $ARGUMENTS --json commits | jq -r ".commits[].messageHeadline"'
-  - name: walkthrough_state
-    command: '[ -f .claude/.walkthrough-state.json ] && cat .claude/.walkthrough-state.json || echo "{}"'
 ---
 
 ## Initial Context
-- PR metadata: !{pr_metadata}
-- Changed files: !{changed_files}
-- Spec exists: !{spec_exists}
-- Review criteria: !{review_criteria}
-- Commit messages: !{pr_commits}
-- Previous walkthrough state: !{walkthrough_state}
+- PR metadata: !`gh pr view $ARGUMENTS --json number,title,body,url,headRefName,baseRefName,additions,deletions,changedFiles,files`
+- Changed files (excluding sessions): !`bash -c "gh pr diff $ARGUMENTS --name-only | grep -v '\.claude/sessions/'"`
+- Spec exists: !`[ -f .claude/spec.md ] && echo "true" || echo "false"`
+- Review criteria: !`[ -f .claude/spec-state.json ] && jq ".review_criteria" .claude/spec-state.json || echo "{}"`
+- Commit messages: !`bash -c "gh pr view $ARGUMENTS --json commits | jq -r '.commits[].messageHeadline'"`
+- Previous walkthrough state: !`[ -f .claude/.walkthrough-state.json ] && cat .claude/.walkthrough-state.json || echo "{}"`
 
-## Full PR Diff
-!{pr_diff}
+## Full PR Diff (excluding session files)
+!`~/.claude/commands/dev/filter-diff.sh $ARGUMENTS`
 
 ## Interactive PR Walkthrough Protocol
 

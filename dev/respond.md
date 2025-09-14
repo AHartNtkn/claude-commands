@@ -1,52 +1,25 @@
 ---
-allowed-tools: Edit, Bash(git:*), Bash(gh pr:*), Bash(gh issue:*), Bash(gh sub-issue:*), Bash(test*), Bash(npm *), Bash(pnpm *), Bash(yarn *), Bash(python *), Bash(pytest*), Bash(go test*), Bash(cargo test*), Bash(jq *), Read, Grep, Task
+allowed-tools: Edit, Bash(git:*), Bash(gh pr:*), Bash(gh issue:*), Bash(gh sub-issue:*), Bash(gh api:*), Bash(test*), Bash(npm *), Bash(pnpm *), Bash(yarn *), Bash(python *), Bash(pytest*), Bash(go test*), Bash(cargo test*), Bash(jq *), Bash(echo:*), Bash(sed:*), Bash(grep:*), Bash(awk:*), Bash([:*), Bash(perl:*), Bash(bash -c:*), Bash(~/.claude/commands/dev/filter-diff.sh:*), Read, Grep, Task
 argument-hint: [PR_NUMBER]
 description: Systematically respond to PR review feedback with proper issue tracking and documentation
-context-commands:
-  - name: pr_number
-    command: 'echo "${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"'
-  - name: pr_context
-    command: 'PR="${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"; gh pr view "$PR" --json number,title,body,state,reviews,comments'
-  - name: latest_review
-    command: 'PR="${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"; gh pr view "$PR" --comments --json comments | jq -r ".comments[-1].body // empty"'
-  - name: review_threads
-    command: 'PR="${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"; gh api "repos/:owner/:repo/pulls/$PR/comments" --paginate 2>/dev/null || echo "[]"'
-  - name: pr_diff_files
-    command: 'PR="${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"; gh pr diff "$PR" --name-only | grep -v "\.claude/sessions/"'
-  - name: pr_diff_full
-    command: 'PR="${ARGUMENTS:-$(git branch --show-current | sed \"s/.*///\")}"; gh pr diff "$PR" | awk "/^diff --git.*\\.claude\\/sessions\\// { skip=1; next } /^diff --git/ { skip=0 } skip==0"'
-  - name: plan_exists
-    command: '[ -f .claude/plan.md ] && echo "true" || echo "false"'
-  - name: spec_requirements
-    command: '[ -f .claude/spec.md ] && grep -E "FR-|NFR-" .claude/spec.md || echo ""'
-  - name: review_criteria
-    command: '[ -f .claude/spec-state.json ] && jq ".review_criteria" .claude/spec-state.json || echo "{}"'
 ---
 
 ## Initial Context
-- PR Number: !{pr_number}
-- PR Details: !{pr_context}
-- Latest Review Comment: !{latest_review}
-- Review Threads: !{review_threads}
-- Files Changed in PR: !{pr_diff_files}
-- Plan exists: !{plan_exists}
-- Spec requirements: !{spec_requirements}
-- Review criteria: !{review_criteria}
+- PR Number: $ARGUMENTS
+- PR Details: !`gh pr view $ARGUMENTS --json number,title,body,state,reviews,comments`
+- Latest Review: !`bash -c "gh pr view $ARGUMENTS --comments --json comments | jq -r '.comments[-1].body // empty'"`
+- Review Threads: !`bash -c "gh pr view $ARGUMENTS --json comments | jq '.comments'"`
+- Files Changed (excluding sessions): !`bash -c "gh pr diff $ARGUMENTS --name-only | grep -v '\.claude/sessions/'"`
+- Plan exists: !`test -f .claude/plan.md && echo "true" || echo "false"`
+- Spec requirements: !`test -f .claude/spec.md && grep -E "FR-|NFR-" .claude/spec.md || echo ""`
+- Review criteria: !`test -f .claude/spec-state.json && jq ".review_criteria" .claude/spec-state.json || echo "{}"`
 
-## Full PR Diff
-!{pr_diff_full}
+## Full PR Diff (excluding session files)
+!`~/.claude/commands/dev/filter-diff.sh $ARGUMENTS`
 
-## CRITICAL INSTRUCTION: INVESTIGATE BEFORE CLASSIFYING
+## CORE RULE: INVESTIGATE → FIX (or prove wrong with evidence)
 
-This command has ONE rule: **INVESTIGATE FIRST, THEN FIX or PROVE WRONG WITH EVIDENCE**.
-
-You are NOT allowed to:
-- Classify feedback without reading the actual code
-- Dispute claims without showing contradicting code
-- Defer items without proving they weren't touched in this PR
-- Make assumptions based on general programming knowledge
-
-Every piece of feedback requires investigation. Default to FIX unless evidence proves otherwise.
+Default to FIX. Only dispute with concrete counter-evidence from code. Never defer without proving file wasn't touched in PR.
 
 ## Review Analysis
 
@@ -249,66 +222,106 @@ Create `.review_analysis.md` based on session data:
 
 ## Implementation
 
-### 5) Verification Gate Check
+### 5) Verify & Plan Implementation
 
-Before implementing any fixes, verify the session is complete:
-
-```bash
-# Verify session file exists (use the SESSION_FILE variable from earlier)
-if [ ! -f "$SESSION_FILE" ]; then
-  echo "ERROR: Session file $SESSION_FILE not found. Must complete verification first."
-  exit 1
-fi
-
-VERIFIED=$(jq -r '.verification_complete' "$SESSION_FILE")
-ALLOWED=$(jq -r '.implementation_allowed' "$SESSION_FILE")
-
-if [ "$VERIFIED" != "true" ] || [ "$ALLOWED" != "true" ]; then
-  echo "ERROR: Verification incomplete. Review session file: $SESSION_FILE"
-  echo "Verification complete: $VERIFIED"
-  echo "Implementation allowed: $ALLOWED"
-  exit 1
-fi
-
-echo "✓ Verification complete. Proceeding with implementation."
-```
-
-### 6) Fix All Feedback Items
-
-For each feedback item marked with action: "fix" in the session file:
-
-```bash
-# Get items to implement from session
-ITEMS_TO_FIX=$(jq -r '.feedback_items[] | select(.action == "fix") | "\(.id): \(.reviewer_comment)"' "$SESSION_FILE")
-
-# Update session as you implement each item
-jq '.feedback_items[] | select(.id == "F001") | .implementation_status = "in_progress"' "$SESSION_FILE" > tmp.json && mv tmp.json "$SESSION_FILE"
-```
-
-For each issue to implement:
-
-1. Create a test that demonstrates the issue (if applicable):
+1. **Verification gate**:
    ```bash
-   # Run existing tests first
-   npm test  # or appropriate test command
+   VERIFIED=$(jq -r '.verification_complete' "$SESSION_FILE")
+   [ "$VERIFIED" != "true" ] && echo "ERROR: Investigation incomplete" && exit 1
    ```
 
-2. Fix the issue with minimal, focused changes
-
-3. Verify the fix:
-   - Run tests again
-   - Check for regressions
-   - Ensure fix aligns with standards
-
-4. Commit with descriptive message:
+2. **Find existing implementations** (for each fix):
    ```bash
-   git add [files]
-   git commit -m "fix(review): address [specific issue]
-
-   Addresses review feedback from PR #$PR_NUM
-   - [Specific change made]
-   - [Why this fixes the issue]"
+   # Search for existing code
+   grep -r "[function_name]" src/ --include="*.ts" --include="*.js"
    ```
+
+3. **Record implementation plan**:
+   ```json
+   "implementation_plan": {
+     "existing_code_found": "src/utils.ts:45-67",
+     "action": "modify",  // or "delete_replace" or "create_new"
+   }
+   ```
+   - Code exists → MODIFY
+   - Wrong architecture → DELETE+REPLACE
+   - Nothing exists → CREATE NEW
+
+### 6) Fix Feedback Using Implementation Hierarchy
+
+**CRITICAL RULES - Follow in this EXACT order:**
+
+#### Rule 1: MODIFY existing code (DEFAULT)
+If implementation_plan.action = "modify":
+- Use Edit/MultiEdit on the existing file
+- Modify the current implementation to fix the issue
+- Do NOT create a parallel implementation
+- Do NOT add V2/New/Updated versions
+
+Example:
+```bash
+# If existing code at src/utils.ts:45-67
+# Use Edit to modify it directly
+Edit src/utils.ts
+# Change the existing function, don't create generateUUIDv2
+```
+
+#### Rule 2: DELETE AND REPLACE (for architectural issues)
+If implementation_plan.action = "delete_replace":
+- First DELETE the old implementation COMPLETELY
+- Then create the new implementation
+- Update ALL references to use new implementation
+- NEVER leave both versions
+
+Signs requiring DELETE+REPLACE:
+- Wrong data structure fundamentally
+- Incorrect algorithm approach
+- Misunderstood requirements
+- Reviewer says "this approach is wrong"
+
+Example:
+```bash
+# Delete old implementation
+Edit src/old.ts  # Remove entire function/class
+# Create new implementation
+Edit src/new.ts  # Add replacement
+# Update all imports/references
+grep -r "oldFunction" src/  # Find all references
+# Update each reference to use new implementation
+```
+
+#### Rule 3: CREATE NEW (ONLY if nothing exists)
+If implementation_plan.action = "create_new":
+- Verify once more that nothing similar exists
+- Create the new implementation
+- Add appropriate tests
+
+**FORBIDDEN PATTERNS:**
+❌ Creating `functionV2` while `function` exists
+❌ Adding `newImplementation` alongside `oldImplementation`
+❌ Creating `utils2.ts` when `utils.ts` has the feature
+❌ Leaving old code "for backwards compatibility"
+❌ Adding duplicate functionality with slightly different names
+
+**REQUIRED PATTERN:**
+✓ Found existing → Modified it directly
+✓ Wrong approach → Deleted old, replaced completely
+✓ Didn't exist → Created new (after verification)
+✓ One implementation per feature
+✓ No dead code remains
+
+#### Implementation Process
+
+For each fix:
+
+1. **Follow the implementation_plan.action**:
+   - Check session for action decision from Phase 5.5
+   - Execute according to hierarchy rules above
+
+2. **Test the change**: `npm test` (or appropriate)
+
+3. **Commit**: `git commit -m "fix(review): [modify|replace|add] [what] to address [issue]"`
+
 
 ### 7) Handle Out-of-Scope Items
 
@@ -381,102 +394,35 @@ For each feedback item with action: "create-issue" in the session:
    - Update dependencies if needed
    - Increment version
 
-### 5) Add Clarifying Comments
+### 8) Document & Close
 
-For disputed/invalid feedback where there's confusion:
-
-1. Identify the code location that caused confusion
-2. Add a clarifying comment that explains:
-   - Why the current approach is correct
-   - What architectural decision or standard it follows
-   - Why alternative approaches were not used
-
-Example:
-```python
-# This uses synchronous processing intentionally - see ADR-003
-# Async would violate our transaction boundaries requirement
-def process_payment(order):
-    # Implementation...
-```
-
-3. Commit clarifications:
-   ```bash
-   git commit -am "docs: add clarifying comments for review feedback"
+1. **Add clarifying comments for disputes** (if needed):
+   ```python
+   # Uses synchronous processing per ADR-003 (transaction boundaries)
    ```
 
-## Documentation
+2. **Create response document** `.review_response.md`:
+   ```markdown
+   # Response to PR Review
 
-### 6) Create Response Document
+   ## Summary
+   Addressed X of Y items, created Z follow-ups.
 
-Create `.review_response.md`:
-```markdown
-# Response to PR Review
+   ## Fixed
+   ✅ **[Issue]**: [What was fixed] - Commit: [sha]
 
-## Summary
-Addressed X of Y review comments directly, created Z follow-up issues.
+   ## Disputed
+   ❌ **[Claim]**: [Why incorrect] - Evidence: [code quote]
 
-## Changes Made in This PR
-
-### Critical Issues Fixed
-✅ **Issue 1**: [What was fixed]
-- Commit: [sha]
-- Change: [Brief description]
-
-### High Priority Issues Fixed
-✅ **Issue 2**: [What was fixed]
-- Commit: [sha]
-- Change: [Brief description]
-
-## Deferred to Follow-up Issues
-
-### Created Issues
-📝 **Issue #NNN**: [Title]
-- Priority: Medium
-- Justification for deferral: [Reason - e.g., requires broader refactoring, separate concern, etc.]
-
-## Disputed/Clarified Points
-
-### Point 1: [Reviewer concern]
-**Response**: [Explanation with reference to standards/ADRs]
-**Action taken**: Added clarifying comment at [file:line]
-
-## Testing
-- [ ] All existing tests pass
-- [ ] New tests added for fixes
-- [ ] No regressions detected
-- [ ] Test coverage maintained/improved
-
-## Next Steps
-1. Request re-review on addressed items
-2. Track follow-up issues in project board
-3. Update documentation if needed
-```
-
-### 7) Post Response to PR
-
-Post the response as a PR comment:
-```bash
-gh pr comment "$PR_NUM" --body-file .review_response.md
-```
-
-## Final Steps
-
-### 8) Update PR and Request Re-review
-
-1. Update PR description if needed:
-   ```bash
-   # Update acceptance criteria checkboxes
-   gh pr edit "$PR_NUM" --body-file .updated_pr_body.md
+   ## Deferred
+   📝 **Issue #[NUM]**: [What was deferred] - Reason: [Out of PR scope]
    ```
 
-2. Push all changes:
+3. **Post and update**:
    ```bash
+   gh pr comment "$PR_NUM" --body-file .review_response.md
    git push
-   ```
-
-3. Request re-review:
-   ```bash
-   gh pr review "$PR_NUM" --request-changes --body "Addressed review feedback. Please re-review the changes."
+   gh pr review "$PR_NUM" --request-changes --body "Addressed feedback. Please re-review."
    ```
 
 ### 9) Validation Checklist

@@ -1,17 +1,6 @@
 ---
-allowed-tools: Read, Write, Grep, WebSearch, Bash(gh issue create:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh sub-issue:*), Bash(jq *)
+allowed-tools: Read, Write, Grep, WebSearch, Bash(gh issue create:*), Bash(gh issue view:*), Bash(gh issue list:*), Bash(gh sub-issue:*), Bash(jq:*), Bash([:*), Bash(echo:*), Bash(cat:*)
 description: Create initial plan from specification
-context-commands:
-  - name: spec_location
-    command: '[ -f .claude/spec.md ] && echo ".claude/spec.md" || ([ -f spec.md ] && echo "spec.md" || echo "NOT_FOUND")'
-  - name: spec_content
-    command: '[ -f .claude/spec.md ] && cat .claude/spec.md || ([ -f spec.md ] && cat spec.md || echo "")'
-  - name: spec_state
-    command: '[ -f .claude/spec-state.json ] && cat .claude/spec-state.json || echo "{}"'
-  - name: parent_issue
-    command: '[ -f .claude/spec-state.json ] && jq -r ".meta.github_issue // empty" .claude/spec-state.json || echo ""'
-  - name: plan_exists
-    command: '[ -f .claude/plan.md ] && echo "true" || echo "false"'
 ---
 
 # Plan Creation Phase
@@ -19,8 +8,8 @@ context-commands:
 ## Preflight Checks
 
 ### Check 1: Specification exists
-- Spec location: !{spec_location}
-- Plan already exists: !{plan_exists}
+- Spec location: !`[ -f .claude/spec.md ] && echo ".claude/spec.md" || ([ -f spec.md ] && echo "spec.md" || echo "NOT_FOUND")`
+- Plan already exists: !`[ -f .claude/plan.md ] && echo "true" || echo "false"`
 
 **If spec_location is "NOT_FOUND":**
 Stop and inform user: "No specification found. Please run `/dev/spec` first to create one."
@@ -29,10 +18,10 @@ Stop and inform user: "No specification found. Please run `/dev/spec` first to c
 Stop and inform user: "Plan already exists at .claude/plan.md. Run `/dev/plan/analyze` to continue analysis."
 
 ## Specification Content
-!{spec_content}
+!`[ -f .claude/spec.md ] && cat .claude/spec.md || ([ -f spec.md ] && cat spec.md || echo "")`
 
 ## Spec State
-!{spec_state}
+!`[ -f .claude/spec-state.json ] && cat .claude/spec-state.json || echo "{}"`
 
 ## Algorithm to Execute
 
@@ -251,7 +240,7 @@ This script will:
 ### Task Relationships
 - **Dependencies**: Prerequisites that must complete first (tracked in task lists)
 - **Decomposition**: Parent-child breakdown (tracked as sub-issues)
-- Top-level tasks → sub-issues of spec issue #!{parent_issue}
+- Top-level tasks → sub-issues of spec issue #!`[ -f .claude/spec-state.json ] && jq -r ".meta.github_issue // empty" .claude/spec-state.json || echo ""`
 - Decomposed tasks → sub-issues of their parent task
 
 ### Prohibitions

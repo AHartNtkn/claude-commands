@@ -1,18 +1,7 @@
 ---
-allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(git:*)
+allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(git:*), Bash(if:*), Bash([:*), Bash(echo:*), Bash(find:*)
 argument-hint: [SKILL_ID_OR_AUTO]
 description: Systematic skill decomposition using pedagogical analysis and cognitive load theory
-context-commands:
-  - name: target_skill
-    command: 'if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi'
-  - name: skill_details
-    command: 'SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL] // \"NOT_FOUND\"" .claude/learn/skills.json'
-  - name: failure_data
-    command: 'SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".failed_skills[$SKILL] // \"NOT_FOUND\"" .claude/learn/stack.json'
-  - name: assessment_history
-    command: 'SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); find .claude/learn/sessions -name "*.json" -exec jq -r "select(.skill_id == \"$SKILL\") | {session_id, classification, mastery_probability, accuracy, item_responses: (.item_responses | length)}" {} \;'
-  - name: existing_prereqs
-    command: 'SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL].prerequisites // []" .claude/learn/skills.json'
 ---
 
 # /learn/expand $ARGUMENTS
@@ -21,11 +10,11 @@ context-commands:
 Perform systematic skill decomposition using pedagogical analysis, cognitive load theory, and assessment data to identify specific prerequisite skills needed for mastery. This command implements the critical "breaking down failed skills" phase of the mastery learning algorithm.
 
 ## Initial Context
-- Target skill: !{target_skill}
-- Skill details: !{skill_details}
-- Failure history: !{failure_data}
-- Assessment data: !{assessment_history}
-- Existing prerequisites: !{existing_prereqs}
+- Target skill: !`if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi`
+- Skill details: !`SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL] // \"NOT_FOUND\"" .claude/learn/skills.json`
+- Failure history: !`SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".failed_skills[$SKILL] // \"NOT_FOUND\"" .claude/learn/stack.json`
+- Assessment data: !`SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); find .claude/learn/sessions -name "*.json" -exec jq -r "select(.skill_id == \"$SKILL\") | {session_id, classification, mastery_probability, accuracy, item_responses: (.item_responses | length)}" {} \;`
+- Existing prerequisites: !`SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); jq -r ".[$SKILL].prerequisites // []" .claude/learn/skills.json`
 
 ## Skill Decomposition Framework
 
@@ -43,7 +32,7 @@ Perform systematic skill decomposition using pedagogical analysis, cognitive loa
 #### 1.1 Assessment Data Analysis
 Extract failure patterns from assessment history:
 ```bash
-SKILL_ID="!{target_skill}"
+SKILL_ID=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi)
 
 if [ "$SKILL_ID" = "none" ]; then
     echo "ERROR: No skill specified for expansion"
@@ -55,7 +44,7 @@ cat > .claude/learn/cache/failure_analysis.json << EOF
 {
   "skill_id": "$SKILL_ID",
   "analysis_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "failure_patterns": $(echo '!{assessment_history}' | jq '[.] | group_by(.classification) | map({classification: .[0].classification, count: length, avg_accuracy: ([.[].accuracy] | add / length)})'),
+  "failure_patterns": $(SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".failed_skills | keys | first // .current_focus // \"none\"" .claude/learn/stack.json; else echo "$ARGUMENTS"; fi); find .claude/learn/sessions -name "*.json" -exec jq -r "select(.skill_id == \"$SKILL\") | {session_id, classification, mastery_probability, accuracy, item_responses: (.item_responses | length)}" {} \; | jq -s '[.] | group_by(.classification) | map({classification: .[0].classification, count: length, avg_accuracy: ([.[].accuracy] | add / length)})'),
   "error_indicators": []
 }
 EOF
@@ -66,12 +55,12 @@ Use Task tool for detailed failure analysis:
 ```markdown
 **Agent Prompt for Failure Analysis:**
 
-Analyze the assessment failures for skill: "!{target_skill}"
+Analyze the assessment failures for skill: "$SKILL_ID"
 
 **Assessment Data:**
-- Failure count: $(echo '!{failure_data}' | jq -r '.fail_count // 0')  
-- Recent assessments: !{assessment_history}
-- Current prerequisites: !{existing_prereqs}
+- Failure count: [from stack.json]
+- Recent assessments: [from session files]
+- Current prerequisites: [from skills.json]
 
 **Task:** Identify specific knowledge/skill gaps that caused failure
 
@@ -126,7 +115,7 @@ Generate prerequisite candidates based on cognitive analysis:
 ```markdown
 **Agent Prompt for Prerequisite Generation:**
 
-Based on the failure analysis, generate prerequisite skills that will reduce cognitive load for: "!{target_skill}"
+Based on the failure analysis, generate prerequisite skills that will reduce cognitive load for: "$SKILL_ID"
 
 **Cognitive Load Analysis Results:**
 [Insert results from Phase 2.1]
@@ -353,11 +342,11 @@ done
 #### 6.1 Expansion Summary
 Generate comprehensive expansion report:
 ```markdown
-# Skill Expansion Report: !{target_skill}
+# Skill Expansion Report: $SKILL_ID
 
 ## Expansion Context
-- **Target Skill**: !{target_skill}
-- **Expansion Trigger**: Assessment failure ($(echo '!{failure_data}' | jq -r '.fail_count') attempts)
+- **Target Skill**: $SKILL_ID
+- **Expansion Trigger**: Assessment failure (multiple attempts)
 - **Session ID**: $(date +"%Y%m%d_%H%M%S" | sed "s/^/expand_/")
 - **Timestamp**: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -393,7 +382,7 @@ $(jq -r '.prerequisites[] | "### \(.title)\n- **Description**: \(.description)\n
 $(for prereq in $ORDERED_PREREQS; do
     echo "[$prereq] → "
 done)
-[!{target_skill}] → [Dependent Skills...]
+[$SKILL_ID] → [Dependent Skills...]
 ```
 
 The skill decomposition has established a clear learning path with reduced cognitive load at each step.
@@ -402,7 +391,7 @@ The skill decomposition has established a clear learning path with reduced cogni
 #### 6.2 Git Integration
 ```bash
 git add .claude/learn/
-git commit -m "expand: decompose !{target_skill} → $(echo "$ORDERED_PREREQS" | wc -l) prerequisites
+git commit -m "expand: decompose $SKILL_ID → $(echo "$ORDERED_PREREQS" | wc -l) prerequisites
 
 Expansion Analysis:
 - Failure patterns: $(jq -c '.failure_patterns' .claude/learn/cache/failure_analysis.json)

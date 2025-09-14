@@ -1,24 +1,15 @@
 ---
-allowed-tools: Read, Task, Grep, Bash(jq *)
+allowed-tools: Read, Task, Grep, Bash(jq:*), Bash([:*), Bash(echo:*), Bash(grep:*)
 description: Integrated planning loop - interleaves questions and analysis
-context-commands:
-  - name: spec_exists
-    command: '[ -f .claude/spec.md ] && echo "true" || [ -f spec.md ] && echo "true" || echo "false"'
-  - name: plan_exists
-    command: '[ -f .claude/plan.md ] && echo "true" || echo "false"'
-  - name: open_questions
-    command: '[ -f .claude/questions.json ] && jq "if type == \"object\" then [.[] | select(type == \"object\" and .status == \"open\")] | length else 0 end" .claude/questions.json 2>/dev/null || echo "0"'
-  - name: plan_frozen
-    command: '[ -f .claude/plan.md ] && grep -q "^# Plan (v1.0)" .claude/plan.md && echo "true" || echo "false"'
 ---
 
 # Integrated Planning Loop
 
 ## Current State
-- Spec exists: !{spec_exists}
-- Plan exists: !{plan_exists}
-- Plan frozen: !{plan_frozen}
-- Open questions: !{open_questions}
+- Spec exists: !`[ -f .claude/spec.md ] && echo "true" || [ -f spec.md ] && echo "true" || echo "false"`
+- Plan exists: !`[ -f .claude/plan.md ] && echo "true" || echo "false"`
+- Plan frozen: !`[ -f .claude/plan.md ] && grep -q "^# Plan (v1.0)" .claude/plan.md && echo "true" || echo "false"`
+- Open questions: !`[ -f .claude/questions.json ] && jq "if type == \"object\" then [.[] | select(type == \"object\" and .status == \"open\")] | length else 0 end" .claude/questions.json 2>/dev/null || echo "0"`
 
 ## Preflight Checks
 

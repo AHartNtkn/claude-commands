@@ -1,18 +1,7 @@
 ---
-allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(git:*)
+allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(git:*), Bash(if:*), Bash([:*), Bash(echo:*), Bash(date:*), Bash(sed:*), Bash(head:*), Bash(tr:*), Bash(while:*), Bash(read:*)
 argument-hint: [SKILL_ID_OR_AUTO]
 description: Research-based skill teaching with worked examples, faded practice, and mastery assessment
-context-commands:
-  - name: ready_skill
-    command: 'if [ "$ARGUMENTS" = "auto" ]; then jq -r ".stack[] as \$skill | select((.[\$skill].state == \"UNREADY\") and (.[\$skill].prerequisites | length == 0 or all(.[\$skill].prerequisites[] as \$prereq | .skill_estimates[\$prereq].mastery_probability >= 0.85))) | \$skill" .claude/learn/skills.json .claude/learn/student.json | head -1 | tr -d "\n" || echo "none"; else echo "$ARGUMENTS"; fi'
-  - name: skill_details
-    command: 'SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".stack[] as \$skill | select((.[\$skill].state == \"UNREADY\") and (.[\$skill].prerequisites | length == 0 or all(.[\$skill].prerequisites[] as \$prereq | .skill_estimates[\$prereq].mastery_probability >= 0.85))) | \$skill" .claude/learn/skills.json .claude/learn/student.json | head -1 | tr -d "\n" || echo "none"; else echo "$ARGUMENTS"; fi); jq -r ".[\$SKILL] // \"NOT_FOUND\"" .claude/learn/skills.json'
-  - name: prerequisite_status
-    command: 'SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".stack[] as \$skill | select((.[\$skill].state == \"UNREADY\") and (.[\$skill].prerequisites | length == 0 or all(.[\$skill].prerequisites[] as \$prereq | .skill_estimates[\$prereq].mastery_probability >= 0.85))) | \$skill" .claude/learn/skills.json .claude/learn/student.json | head -1 | tr -d "\n" || echo "none"; else echo "$ARGUMENTS"; fi); jq -r ".[\$SKILL].prerequisites[]?" .claude/learn/skills.json | while read prereq; do echo "$prereq: $(jq -r ".skill_estimates[\"$prereq\"].mastery_probability // 0.0" .claude/learn/student.json)"; done'
-  - name: teaching_config
-    command: 'jq -r ".teaching" .claude/learn/config.json'
-  - name: session_id
-    command: 'date +"%Y%m%d_%H%M%S" | sed "s/^/teach_/"'
 ---
 
 # /learn/teach $ARGUMENTS
@@ -21,11 +10,11 @@ context-commands:
 Implement research-grounded skill teaching using Cognitive Load Theory, worked examples with faded guidance, and immediate formative assessment. This command handles the instruction phase when all prerequisites are mastered and the student is ready to learn the target skill.
 
 ## Initial Context
-- Ready skill: !{ready_skill}
-- Skill details: !{skill_details}
-- Prerequisites status: !{prerequisite_status}
-- Teaching configuration: !{teaching_config}
-- Teaching session ID: !{session_id}
+- Ready skill: !`if [ "$ARGUMENTS" = "auto" ]; then jq -r ".stack[] as \$skill | select((.[\$skill].state == \"UNREADY\") and (.[\$skill].prerequisites | length == 0 or all(.[\$skill].prerequisites[] as \$prereq | .skill_estimates[\$prereq].mastery_probability >= 0.85))) | \$skill" .claude/learn/skills.json .claude/learn/student.json | head -1 | tr -d "\n" || echo "none"; else echo "$ARGUMENTS"; fi`
+- Skill details: !`SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".stack[] as \$skill | select((.[\$skill].state == \"UNREADY\") and (.[\$skill].prerequisites | length == 0 or all(.[\$skill].prerequisites[] as \$prereq | .skill_estimates[\$prereq].mastery_probability >= 0.85))) | \$skill" .claude/learn/skills.json .claude/learn/student.json | head -1 | tr -d "\n" || echo "none"; else echo "$ARGUMENTS"; fi); jq -r ".[\$SKILL] // \"NOT_FOUND\"" .claude/learn/skills.json`
+- Prerequisites status: !`SKILL=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".stack[] as \$skill | select((.[\$skill].state == \"UNREADY\") and (.[\$skill].prerequisites | length == 0 or all(.[\$skill].prerequisites[] as \$prereq | .skill_estimates[\$prereq].mastery_probability >= 0.85))) | \$skill" .claude/learn/skills.json .claude/learn/student.json | head -1 | tr -d "\n" || echo "none"; else echo "$ARGUMENTS"; fi); jq -r ".[\$SKILL].prerequisites[]?" .claude/learn/skills.json | while read prereq; do echo "$prereq: $(jq -r ".skill_estimates[\"$prereq\"].mastery_probability // 0.0" .claude/learn/student.json)"; done`
+- Teaching configuration: !`jq -r ".teaching" .claude/learn/config.json`
+- Teaching session ID: !`date +"%Y%m%d_%H%M%S" | sed "s/^/teach_/"`
 
 ## Teaching Framework
 
@@ -42,7 +31,7 @@ Implement research-grounded skill teaching using Cognitive Load Theory, worked e
 
 #### 1.1 Prerequisite Mastery Confirmation
 ```bash
-SKILL_ID="!{ready_skill}"
+SKILL_ID=$(if [ "$ARGUMENTS" = "auto" ]; then jq -r ".stack[] as \$skill | select((.\[\$skill].state == \"UNREADY\") and (.\[\$skill].prerequisites | length == 0 or all(.\[\$skill].prerequisites[] as \$prereq | .skill_estimates\[\$prereq].mastery_probability >= 0.85))) | \$skill" .claude/learn/skills.json .claude/learn/student.json | head -1 | tr -d "\n" || echo "none"; else echo "$ARGUMENTS"; fi)
 
 if [ "$SKILL_ID" = "none" ]; then
     echo "ERROR: No skill ready for teaching. All skills either lack mastered prerequisites or are already mastered."
@@ -84,11 +73,11 @@ Create comprehensive skill explanation using Task tool:
 ```markdown
 **Agent Prompt for Skill Explanation:**
 
-Generate a complete teaching explanation for: "!{ready_skill}"
+Generate a complete teaching explanation for: "$SKILL_ID"
 
 **Context:**
-- Skill details: !{skill_details}
-- Prerequisites mastered: !{prerequisite_status}
+- Skill details: From skills.json for this skill
+- Prerequisites mastered: From student.json mastery probabilities
 - Student's estimated ability: $(jq -r ".skill_estimates[\"$SKILL_ID\"].theta // 0.0" .claude/learn/student.json)
 
 **Explanation Requirements:**
@@ -120,7 +109,7 @@ Generate progressive worked examples using research principles:
 ```markdown
 **Agent Prompt for Worked Examples:**
 
-Create 3 worked examples for skill: "!{ready_skill}"
+Create 3 worked examples for skill: "$SKILL_ID"
 
 **Example Progression (CLT-Based):**
 1. **Foundational Example**: Demonstrates core procedure with minimal complexity
@@ -185,11 +174,11 @@ for level, config in practice_structure.items():
 #### 3.1 Conceptual Teaching Phase
 Present explanation with comprehension checks:
 ```markdown
-# Teaching Session: !{ready_skill}
+# Teaching Session: $SKILL_ID
 
 ## 📚 Understanding the Skill
 
-!{generated_explanation}
+[Generated explanation will appear here]
 
 ### 🎯 Key Takeaways
 - [Bullet point summary of critical concepts]
@@ -298,9 +287,10 @@ Present examples with strategic commentary:
 Create final mastery quiz with research-based design:
 ```bash
 # Generate 3-option MCQ quiz
-cat > .claude/learn/quizzes/!{session_id}_mastery_quiz.json << EOF
+SESSION_ID=$(date +"%Y%m%d_%H%M%S" | sed "s/^/teach_/")
+cat > .claude/learn/quizzes/${SESSION_ID}_mastery_quiz.json << EOF
 {
-  "quiz_id": "!{session_id}_mastery",
+  "quiz_id": "${SESSION_ID}_mastery",
   "skill_id": "$SKILL_ID",
   "quiz_type": "MASTERY_ASSESSMENT",
   "items": [
@@ -316,7 +306,7 @@ cat > .claude/learn/quizzes/!{session_id}_mastery_quiz.json << EOF
   },
   "metadata": {
     "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-    "teaching_session": "!{session_id}"
+    "teaching_session": "${SESSION_ID}"
   }
 }
 EOF
@@ -326,7 +316,7 @@ EOF
 ```markdown
 **Agent Prompt for Quiz Items:**
 
-Generate 6 quiz items for skill mastery assessment: "!{ready_skill}"
+Generate 6 quiz items for skill mastery assessment: "$SKILL_ID"
 
 **Item Requirements:**
 - **3-option multiple choice** (A, B, C)
@@ -359,8 +349,8 @@ Generate items that reliably distinguish mastery from partial knowledge.
 #### 6.1 Administer Mastery Quiz
 ```bash
 # Present quiz items one at a time
-QUIZ_FILE=".claude/learn/quizzes/!{session_id}_mastery_quiz.json"
-RESPONSE_FILE=".claude/learn/sessions/!{session_id}_responses.json"
+QUIZ_FILE=".claude/learn/quizzes/${SESSION_ID}_mastery_quiz.json"
+RESPONSE_FILE=".claude/learn/sessions/${SESSION_ID}_responses.json"
 
 # Initialize response tracking
 echo '{"responses": [], "start_time": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > "$RESPONSE_FILE"
@@ -502,9 +492,9 @@ fi
 
 #### 8.1 Complete Teaching Session Log
 ```bash
-cat > .claude/learn/sessions/!{session_id}.json << EOF
+cat > .claude/learn/sessions/${SESSION_ID}.json << EOF
 {
-  "session_id": "!{session_id}",
+  "session_id": "${SESSION_ID}",
   "session_type": "TEACHING",
   "skill_id": "$SKILL_ID", 
   "start_time": "$START_TIME",
@@ -545,11 +535,11 @@ EOF
 
 #### 8.2 Generate Teaching Report
 ```markdown
-# Teaching Session Report: !{ready_skill}
+# Teaching Session Report: $SKILL_ID
 
 ## 🎯 Session Overview
-- **Skill**: !{ready_skill}
-- **Session ID**: !{session_id}  
+- **Skill**: $SKILL_ID
+- **Session ID**: ${SESSION_ID}  
 - **Duration**: $DURATION_MINUTES minutes
 - **Result**: $(if [ "$SKILL_STATE" = "MASTERED" ]; then echo "✅ MASTERED"; else echo "🔄 NEEDS RETEACHING"; fi)
 
@@ -594,7 +584,7 @@ The teaching session $(if [ "$SKILL_STATE" = "MASTERED" ]; then echo "successful
 #### 8.3 Git Integration
 ```bash
 git add .claude/learn/
-git commit -m "teach: $(if [ "$SKILL_STATE" = "MASTERED" ]; then echo "✅ mastered"; else echo "🔄 reteaching"; fi) $SKILL_ID → $ACCURACY quiz accuracy (!{session_id})
+git commit -m "teach: $(if [ "$SKILL_STATE" = "MASTERED" ]; then echo "✅ mastered"; else echo "🔄 reteaching"; fi) $SKILL_ID → $ACCURACY quiz accuracy (${SESSION_ID})
 
 Teaching Session Results:
 - Worked examples: 3 progressive demonstrations  

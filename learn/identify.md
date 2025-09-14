@@ -1,14 +1,7 @@
 ---
-allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(python3:*)
+allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(python3:*), Bash([:*), Bash(echo:*)
 argument-hint: [SKILL_DESCRIPTION]
 description: Semantic skill identification and deduplication to maintain DAG coherence
-context-commands:
-  - name: existing_skills_count
-    command: '[ -f .claude/learn/skills.json ] && jq "length" .claude/learn/skills.json || echo "0"'
-  - name: semantic_index_exists
-    command: '[ -f .claude/learn/semantic_index.json ] && echo "true" || echo "false"'
-  - name: last_skill_id
-    command: '[ -f .claude/learn/skills.json ] && jq -r "keys | map(tonumber) | max" .claude/learn/skills.json || echo "0"'
 ---
 
 # /learn/identify $ARGUMENTS
@@ -17,9 +10,9 @@ context-commands:
 Perform semantic analysis of proposed skills to prevent DAG redundancy. This command implements research-grounded deduplication using embedding similarity, keyword analysis, and domain clustering to maintain a coherent, non-redundant skill graph.
 
 ## Initial Context
-- Existing skills: !{existing_skills_count}
-- Semantic index exists: !{semantic_index_exists}  
-- Last skill ID: !{last_skill_id}
+- Existing skills: !`[ -f .claude/learn/skills.json ] && jq "length" .claude/learn/skills.json || echo "0"`
+- Semantic index exists: !`[ -f .claude/learn/semantic_index.json ] && echo "true" || echo "false"`
+- Last skill ID: !`[ -f .claude/learn/skills.json ] && jq -r "keys | map(tonumber) | max" .claude/learn/skills.json || echo "0"`
 
 ## Semantic Identification Algorithm
 

@@ -1,16 +1,7 @@
 ---
-allowed-tools: Task, Write, Read, Bash(git:*), Bash(mkdir:*), Bash(jq:*), WebFetch, Grep, Glob
+allowed-tools: Task, Write, Read, Bash(git:*), Bash(mkdir:*), Bash(jq:*), WebFetch, Grep, Glob, Bash([:*), Bash(echo:*), Bash(wc:*)
 argument-hint: [SUBJECT_OR_URL]
 description: Initialize a mastery-learning domain from subject description or academic paper URL
-context-commands:
-  - name: learning_dir_exists
-    command: '[ -d .claude/learn ] && echo "true" || echo "false"'
-  - name: git_repo_exists
-    command: '[ -d .git ] && echo "true" || echo "false"'
-  - name: existing_skills
-    command: '[ -f .claude/learn/skills.json ] && jq -r "keys[]" .claude/learn/skills.json | wc -l || echo "0"'
-  - name: setup_dirs
-    command: 'mkdir -p .claude/learn/{sessions,quizzes,teaching} && echo "Directories created"'
 ---
 
 # /learn/start $ARGUMENTS
@@ -19,10 +10,10 @@ context-commands:
 Initialize a comprehensive mastery-learning system for a given subject or academic paper. This command establishes the foundational skill DAG, sets up tracking infrastructure, and creates a git-backed learning repository with semantic skill identification.
 
 ## Initial Context
-- Learning directory exists: !{learning_dir_exists}
-- Git repository exists: !{git_repo_exists}
-- Existing skills count: !{existing_skills}
-- Setup status: !{setup_dirs}
+- Learning directory exists: !`[ -d .claude/learn ] && echo "true" || echo "false"`
+- Git repository exists: !`[ -d .git ] && echo "true" || echo "false"`
+- Existing skills count: !`[ -f .claude/learn/skills.json ] && jq -r "keys[]" .claude/learn/skills.json | wc -l || echo "0"`
+- Setup status: !`mkdir -p .claude/learn/{sessions,quizzes,teaching} && echo "Directories created"`
 
 ## Operating Principles
 - **Research-Grounded**: Implements 85-90% mastery thresholds, CAT-based assessment, spaced repetition

@@ -1,18 +1,7 @@
 ---
-allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(git:*), Bash(python3:*)
+allowed-tools: Task, Write, Read, Edit, Bash(jq:*), Bash(git:*), Bash(python3:*), Bash(date:*), Bash(head:*), Bash(wc:*), Bash(tr:*), Bash(if:*), Bash([:*), Bash(sed:*)
 argument-hint: [AUTO|SKILL_ID|DUE]
 description: Spaced repetition review with adaptive scheduling, interleaving, and forgetting curve modeling
-context-commands:
-  - name: due_reviews
-    command: 'jq -r --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ".spacing_schedule | to_entries[] | select(.value.next_review <= $now) | .key" .claude/learn/student.json | head -10'
-  - name: mastered_skills
-    command: 'jq -r ".mastery_boundary[]?" .claude/learn/student.json | wc -l | tr -d " "'
-  - name: review_stats
-    command: 'jq -r "{total_mastered: (.mastery_boundary | length), overdue_reviews: ([.spacing_schedule | to_entries[] | select(.value.next_review <= \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\")] | length), avg_interval: ([.spacing_schedule | to_entries[].value.interval_days] | add / length)}"' .claude/learn/student.json
-  - name: similar_skills
-    command: 'if [ "$ARGUMENTS" != "AUTO" ] && [ "$ARGUMENTS" != "DUE" ]; then jq -r --arg skill "$ARGUMENTS" ".domain_clusters[] | select(.skills | contains([\$skill])) | .skills[] | select(. != \$skill)" .claude/learn/semantic_index.json | head -3; fi'
-  - name: session_id
-    command: 'date +"%Y%m%d_%H%M%S" | sed "s/^/review_/"'
 ---
 
 # /learn/review $ARGUMENTS
@@ -21,11 +10,11 @@ context-commands:
 Implement research-based spaced repetition with adaptive scheduling, strategic interleaving, and forgetting curve modeling to maintain long-term retention of mastered skills. This command handles the critical maintenance phase of mastery learning to prevent skill decay.
 
 ## Initial Context
-- Due reviews: !{due_reviews}
-- Total mastered skills: !{mastered_skills}
-- Review statistics: !{review_stats}
-- Similar skills (for interleaving): !{similar_skills}
-- Review session ID: !{session_id}
+- Due reviews: !`jq -r --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ".spacing_schedule | to_entries[] | select(.value.next_review <= $now) | .key" .claude/learn/student.json | head -10`
+- Total mastered skills: !`jq -r ".mastery_boundary[]?" .claude/learn/student.json | wc -l | tr -d " "`
+- Review statistics: !`jq -r "{total_mastered: (.mastery_boundary | length), overdue_reviews: ([.spacing_schedule | to_entries[] | select(.value.next_review <= \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\")] | length), avg_interval: ([.spacing_schedule | to_entries[].value.interval_days] | add / length)}" .claude/learn/student.json`
+- Similar skills (for interleaving): !`if [ "$ARGUMENTS" != "AUTO" ] && [ "$ARGUMENTS" != "DUE" ]; then jq -r --arg skill "$ARGUMENTS" ".domain_clusters[] | select(.skills | contains([\$skill])) | .skills[] | select(. != \$skill)" .claude/learn/semantic_index.json | head -3; fi`
+- Review session ID: !`date +"%Y%m%d_%H%M%S" | sed "s/^/review_/"`
 
 ## Spaced Review Framework
 
@@ -44,7 +33,7 @@ Implement research-based spaced repetition with adaptive scheduling, strategic i
 ```bash
 if [ "$ARGUMENTS" = "AUTO" ] || [ "$ARGUMENTS" = "DUE" ]; then
     # Select skills due for review
-    REVIEW_TARGETS=$(echo "!{due_reviews}")
+    REVIEW_TARGETS=$(jq -r --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" ".spacing_schedule | to_entries[] | select(.value.next_review <= $now) | .key" .claude/learn/student.json | head -10)
     REVIEW_MODE="SCHEDULED"
 elif [ -n "$ARGUMENTS" ]; then
     # Specific skill review requested
@@ -157,7 +146,8 @@ for SKILL_ID in $REVIEW_TARGETS; do
     fi
     
     # Generate review items
-    cat >> .claude/learn/cache/review_items_!{session_id}.json << EOF
+    SESSION_ID=$(date +"%Y%m%d_%H%M%S" | sed "s/^/review_/")
+    cat >> .claude/learn/cache/review_items_${SESSION_ID}.json << EOF
 {
     "skill_id": "$SKILL_ID",
     "predicted_retention": $RETENTION_PROB,
@@ -251,12 +241,13 @@ def create_interleaved_sequence(skills_items, strategy):
 #### 3.2 Review Session Execution
 ```bash
 # Execute interleaved review sequence
-SEQUENCE_FILE=".claude/learn/cache/review_sequence_!{session_id}.json"
-RESPONSES_FILE=".claude/learn/sessions/!{session_id}_responses.json"
+SESSION_ID=$(date +"%Y%m%d_%H%M%S" | sed "s/^/review_/")
+SEQUENCE_FILE=".claude/learn/cache/review_sequence_${SESSION_ID}.json"
+RESPONSES_FILE=".claude/learn/sessions/${SESSION_ID}_responses.json"
 
 # Initialize response tracking
 echo '{
-    "session_id": "!{session_id}",
+    "session_id": "${SESSION_ID}",
     "session_type": "SPACED_REVIEW",
     "interleaving_strategy": "'$INTERLEAVING_STRATEGY'",
     "start_time": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
@@ -472,9 +463,9 @@ done
 
 #### 6.1 Comprehensive Review Session Log
 ```bash
-cat > .claude/learn/sessions/!{session_id}.json << EOF
+cat > .claude/learn/sessions/${SESSION_ID}.json << EOF
 {
-    "session_id": "!{session_id}",
+    "session_id": "${SESSION_ID}",
     "session_type": "SPACED_REVIEW",
     "start_time": "$START_TIME",
     "end_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -514,7 +505,7 @@ EOF
 
 #### 6.2 Review Analytics and Reporting
 ```markdown
-# Spaced Review Report: !{session_id}
+# Spaced Review Report: ${SESSION_ID}
 
 ## 📊 Session Overview
 - **Skills Reviewed**: $(echo "$REVIEW_TARGETS" | wc -w) skills
@@ -581,7 +572,7 @@ The spaced review system successfully maintained skill retention through researc
 #### 6.3 Git Integration
 ```bash
 git add .claude/learn/
-git commit -m "review: spaced practice → $(printf "%.0f" $(echo "$(jq '[.responses[].correct] | add / length' "$RESPONSES_FILE") * 100" | bc))% retention (!{session_id})
+git commit -m "review: spaced practice → $(printf "%.0f" $(echo "$(jq '[.responses[].correct] | add / length' "$RESPONSES_FILE") * 100" | bc))% retention (${SESSION_ID})
 
 Review Session Results:
 - Skills: $(echo "$REVIEW_TARGETS" | wc -w) reviewed with $INTERLEAVING_STRATEGY interleaving

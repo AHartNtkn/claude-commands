@@ -1,33 +1,18 @@
 ---
-allowed-tools: Task, Bash(gh:*), WebFetch, Bash(find:*), Bash(cargo:*)
+allowed-tools: Task, Bash(gh:*), WebFetch, Bash(find:*), Bash(cargo:*), Bash([:*), Bash(echo:*), Bash(grep:*), Bash(jq:*), Bash(bash -c:*), Bash(~/.claude/commands/dev/filter-diff.sh:*)
 argument-hint: [pr-number]
 description: Comprehensive PR review with explicit algorithmic checks for code quality, security, performance, and maintainability
-context-commands:
-  - name: pr_metadata
-    command: 'gh pr view $ARGUMENTS --json number,title,body,url,headRefName,baseRefName,additions,deletions,changedFiles'
-  - name: changed_files
-    command: 'gh pr diff $ARGUMENTS --name-only'
-  - name: pr_diff
-    command: 'gh pr diff $ARGUMENTS'
-  - name: spec_exists
-    command: '[ -f .claude/spec.md ] && echo "true" || echo "false"'
-  - name: spec_requirements
-    command: '[ -f .claude/spec.md ] && grep -E "FR-|NFR-" .claude/spec.md || echo ""'
-  - name: review_criteria
-    command: '[ -f .claude/spec-state.json ] && jq ".review_criteria" .claude/spec-state.json || echo "{}"'
-  - name: plan_tasks
-    command: '[ -f .claude/plan.md ] && grep -E "T-[0-9]+" .claude/plan.md || echo ""'
 ---
 
 ## Initial Context
-- PR metadata: !{pr_metadata}
-- Changed files: !{changed_files}
-- Spec exists: !{spec_exists}
-- Review criteria from spec: !{review_criteria}
-- Plan tasks (if available): !{plan_tasks}
+- PR metadata: !`gh pr view $ARGUMENTS --json number,title,body,url,headRefName,baseRefName,additions,deletions,changedFiles`
+- Changed files (excluding sessions): !`bash -c "gh pr diff $ARGUMENTS --name-only | grep -v '\.claude/sessions/'"`
+- Spec exists: !`[ -f .claude/spec.md ] && echo "true" || echo "false"`
+- Review criteria from spec: !`[ -f .claude/spec-state.json ] && jq ".review_criteria" .claude/spec-state.json || echo "{}"`
+- Plan tasks (if available): !`[ -f .claude/plan.md ] && grep -E "T-[0-9]+" .claude/plan.md || echo ""`
 
-## Full PR Diff
-!{pr_diff}
+## Full PR Diff (excluding session files)
+!`~/.claude/commands/dev/filter-diff.sh $ARGUMENTS`
 
 ## Comprehensive Review Strategy
 

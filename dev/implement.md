@@ -1,38 +1,21 @@
 ---
-allowed-tools: Edit, Read, Bash(test*), Bash(git fetch:*), Bash(git checkout:*), Bash(git pull:*), Bash(git rebase:*), Bash(git branch:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Bash(git remote:*), Bash(git symbolic-ref:*), Bash(git status:*), Bash(git grep:*), Bash(gh issue view:*), Bash(gh issue edit:*), Bash(gh sub-issue:*), Bash(gh pr list:*), Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr ready:*), Bash(npm *), Bash(pnpm *), Bash(yarn *), Bash(python *), Bash(pytest*), Bash(go test*), Bash(cargo test*), Bash(pre-commit *), Bash(jq *)
+allowed-tools: Edit, Read, Bash(test*), Bash(git fetch:*), Bash(git checkout:*), Bash(git pull:*), Bash(git rebase:*), Bash(git branch:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Bash(git remote:*), Bash(git symbolic-ref:*), Bash(git status:*), Bash(git grep:*), Bash(gh issue view:*), Bash(gh issue edit:*), Bash(gh sub-issue:*), Bash(gh pr list:*), Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr ready:*), Bash(npm *), Bash(pnpm *), Bash(yarn *), Bash(python *), Bash(pytest*), Bash(go test*), Bash(cargo test*), Bash(pre-commit *), Bash(jq *), Bash([:*), Bash(grep:*), Bash(sed:*), Bash(echo:*)
 argument-hint: [ISSUE_NUMBER]
 description: Implement a GitHub issue via strict Red→Green→Refactor TDD, small commits, and open a PR.
 model: claude-sonnet-4-20250514
-context-commands:
-  - name: issue_json
-    command: 'gh issue view $ARGUMENTS --json number,title,body,state,labels,assignees,url'
-  - name: subissues_json
-    command: 'gh sub-issue list "$ARGUMENTS" --json number,title,state 2>/dev/null || echo "[]"'
-  - name: spec_requirements
-    command: '[ -f .claude/spec.md ] && grep -E "FR-|NFR-" .claude/spec.md || echo ""'
-  - name: spec_test_strategy
-    command: '[ -f .claude/spec-state.json ] && jq ".test_strategy" .claude/spec-state.json || echo "{}"'
-  - name: spec_review_criteria
-    command: '[ -f .claude/spec-state.json ] && jq ".review_criteria" .claude/spec-state.json || echo "{}"'
-  - name: git_status
-    command: 'git status --short'
-  - name: current_branch
-    command: 'git branch --show-current'
-  - name: default_branch
-    command: 'git remote show origin 2>/dev/null | sed -n "s/.*HEAD branch: //p" || echo "main"'
 ---
 
 ## Initial Context
-- Issue details: !{issue_json}
-- Sub-issues: !{subissues_json}
-- Current git status: !{git_status}
-- Current branch: !{current_branch}
-- Default branch: !{default_branch}
+- Issue details: !`gh issue view $ARGUMENTS --json number,title,body,state,labels,assignees,url`
+- Sub-issues: !`gh sub-issue list "$ARGUMENTS" --json number,title,state 2>/dev/null || echo "[]"`
+- Current git status: !`git status --short`
+- Current branch: !`git branch --show-current`
+- Default branch: !`git remote show origin 2>/dev/null | sed -n "s/.*HEAD branch: //p" || echo "main"`
 
 ## Spec Context (if available)
-- Relevant requirements: !{spec_requirements}
-- Test strategy: !{spec_test_strategy}
-- Review criteria: !{spec_review_criteria}
+- Relevant requirements: !`[ -f .claude/spec.md ] && grep -E "FR-|NFR-" .claude/spec.md || echo ""`
+- Test strategy: !`[ -f .claude/spec-state.json ] && jq ".test_strategy" .claude/spec-state.json || echo "{}"`
+- Review criteria: !`[ -f .claude/spec-state.json ] && jq ".review_criteria" .claude/spec-state.json || echo "{}"`
 
 ## Procedure (execute in order; do not skip)
 ### 0) Preflight
@@ -59,7 +42,7 @@ context-commands:
    - Run: `git checkout "$DEFAULT_BRANCH" && git pull --ff-only`
 
 ### 1) Read the issue and extract acceptance criteria
-1. Review the issue details from context (!{issue_json})
+1. Review the issue details from context shown above
 2. Abort if state ≠ `"OPEN"` (or `"OPEN"` equivalent in output).
 3. Derive a **numbered acceptance-criteria checklist** from the issue body. Keep each item testable and behavior-specific. Save a draft PR body to `.gh_pr_body.md`:
 
@@ -192,7 +175,7 @@ This phase ensures you understand the complete context before implementation.
 For each completed sub-issue with merged PRs:
    ```bash
    # Get sub-issue numbers
-   SUBISSUE_NUMS=$(echo '!{subissues_json}' | jq -r '.[] | select(.state == "CLOSED") | .number')
+   SUBISSUE_NUMS=$(gh sub-issue list "$ARGUMENTS" --json number,title,state 2>/dev/null | jq -r '.[] | select(.state == "CLOSED") | .number')
    
    for SUBISSUE in $SUBISSUE_NUMS; do
      echo "=== Reviewing sub-issue #$SUBISSUE ==="

@@ -1,16 +1,7 @@
 ---
-allowed-tools: Write, Read, Bash(gh issue create:*), Task, Bash(jq *)
+allowed-tools: Write, Read, Bash(gh issue create:*), Task, Bash(jq:*), Bash([:*), Bash(echo:*), Bash(mkdir:*)
 argument-hint: [PROJECT_NAME]
 description: Interactive requirements interview producing a complete SRS integrated with the development workflow
-context-commands:
-  - name: claude_dir_exists
-    command: '[ -d .claude ] && echo "true" || echo "false"'
-  - name: spec_exists
-    command: '[ -f .claude/spec.md ] && echo "true" || echo "false"'
-  - name: spec_version
-    command: '[ -f .claude/spec-state.json ] && jq -r ".meta.version" .claude/spec-state.json || echo "none"'
-  - name: setup_dirs
-    command: 'mkdir -p .claude .claude/ADRs && echo "Directories created"'
 ---
 
 # /spec $ARGUMENTS
@@ -35,10 +26,10 @@ Run a rigorous, *interactive* requirements interview and produce a complete, una
 - MoSCoW prioritization with ≤60% Must-Have effort, ~20% Could-Haves pool guidance.
 
 ## Initial Context
-- Claude directory exists: !{claude_dir_exists}
-- Existing spec found: !{spec_exists}
-- Current spec version: !{spec_version}
-- Setup status: !{setup_dirs}
+- Claude directory exists: !`[ -d .claude ] && echo "true" || echo "false"`
+- Existing spec found: !`[ -f .claude/spec.md ] && echo "true" || echo "false"`
+- Current spec version: !`[ -f .claude/spec-state.json ] && jq -r ".meta.version" .claude/spec-state.json || echo "none"`
+- Setup status: !`mkdir -p .claude .claude/ADRs && echo "Directories created"`
 
 ## Data Structures (maintained during the interview)
 Maintain and show a JSON "spec_state" after every turn, saving to `.claude/spec-state.json`:
