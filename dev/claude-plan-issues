@@ -1,0 +1,270 @@
+#!/bin/bash
+# claude-plan-issues - Create GitHub issues from plan.md tasks with [Issue #TBD] placeholders
+#
+# This script automates the mechanical process of:
+# 1. Creating GitHub issues for tasks in plan.md
+# 2. Updating plan.md with issue numbers
+# 3. Establishing sub-issue relationships
+#
+# Prerequisites:
+# - gh CLI must be installed and authenticated
+# - Must be run from project root with .claude/plan.md present
+# - .claude/spec-state.json must exist with parent issue number
+
+set -e  # Exit on error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Check prerequisites
+if ! command -v gh &> /dev/null; then
+    echo -e "${RED}Error: gh CLI not found. Please install GitHub CLI.${NC}"
+    exit 1
+fi
+
+if ! gh auth status &> /dev/null; then
+    echo -e "${RED}Error: Not authenticated with GitHub. Run 'gh auth login'.${NC}"
+    exit 1
+fi
+
+if [ ! -f ".claude/plan.md" ]; then
+    echo -e "${RED}Error: .claude/plan.md not found. Run this from project root.${NC}"
+    exit 1
+fi
+
+if [ ! -f ".claude/spec-state.json" ]; then
+    echo -e "${RED}Error: .claude/spec-state.json not found. Run /spec first.${NC}"
+    exit 1
+fi
+
+# Get repository name
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
+if [ -z "$REPO" ]; then
+    echo -e "${RED}Error: Could not determine repository. Make sure you're in a git repository.${NC}"
+    exit 1
+fi
+
+# Check if gh sub-issue extension is installed
+if ! gh extension list | grep -q "sub-issue"; then
+    echo -e "${RED}Error: gh sub-issue extension is not installed!${NC}"
+    echo -e "${RED}Install it with: gh extension install mintoolkit/gh-sub-issue${NC}"
+    exit 1
+fi
+
+# Get parent issue from spec
+SPEC_ISSUE=$(jq -r '.meta.github_issue // empty' .claude/spec-state.json)
+if [ -z "$SPEC_ISSUE" ]; then
+    echo -e "${RED}Error: No parent issue found in spec-state.json${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Repository: ${REPO}${NC}"
+echo -e "${GREEN}Parent spec issue: #${SPEC_ISSUE}${NC}"
+
+# Function to extract task details from plan.md
+extract_task_details() {
+    local task_line_num=$1
+    local plan_file=".claude/plan.md"
+    
+    # Extract the task line and following lines
+    local task_block=$(sed -n "${task_line_num},/^[*-] \*\*\[/p" "$plan_file" | head -n -1)
+    
+    # Extract task ID and title from first line
+    local task_id=$(echo "$task_block" | head -1 | grep -oE 'T-[0-9]+' | head -1)
+    local title=$(echo "$task_block" | head -1 | sed -E 's/.*T-[0-9]+[: ]+([^*\[]*).*$/\1/' | xargs)
+    
+    # Extract fields
+    local status=$(echo "$task_block" | grep -E '^\* \*\*Status:' | sed 's/.*Status:[[:space:]]*//' || echo "ready")
+    local spec_refs=$(echo "$task_block" | grep -E '^\* \*\*Spec Refs:' | sed 's/.*Spec Refs:[[:space:]]*//' || echo "")
+    local dependencies=$(echo "$task_block" | grep -E '^\* \*\*Dependencies:' | sed 's/.*Dependencies:[[:space:]]*//' || echo "")
+    local parent=$(echo "$task_block" | grep -E '^\* \*\*Parent:' | sed 's/.*Parent:[[:space:]]*//' || echo "")
+    local decomposes=$(echo "$task_block" | grep -E '^\* \*\*Decomposes into:' | sed 's/.*Decomposes into:[[:space:]]*//' || echo "")
+    local artifacts=$(echo "$task_block" | grep -E '^\* \*\*Artifacts to produce:' | sed 's/.*Artifacts to produce:[[:space:]]*//' || echo "")
+    local acceptance=$(echo "$task_block" | grep -E '^\* \*\*Acceptance Criteria' -A 10 | tail -n +2 | grep -E '^[[:space:]]*[-*]' || echo "")
+    
+    # Build issue body
+    local body="## Task: ${task_id}
+
+**Status:** ${status}
+**Spec Refs:** ${spec_refs}"
+    
+    if [ -n "$dependencies" ] && [ "$dependencies" != "none" ]; then
+        body="${body}
+
+## Dependencies
+<!-- GitHub will auto-check these when the referenced issues close -->"
+        # Parse dependencies and create task list
+        IFS=',' read -ra DEPS <<< "$dependencies"
+        for dep in "${DEPS[@]}"; do
+            dep=$(echo "$dep" | xargs)  # Trim whitespace
+            if [[ $dep == T-* ]]; then
+                # Look up the issue number for this task if it exists
+                dep_issue=$(grep -E "\\* \\*\\*\\[ \\] ${dep}[: ]" "$plan_file" | grep -oE '\[Issue #[0-9]+\]' | grep -oE '[0-9]+' || echo "TBD")
+                if [ "$dep_issue" != "TBD" ]; then
+                    body="${body}
+- [ ] #${dep_issue} ${dep}"
+                else
+                    body="${body}
+- [ ] ${dep} (issue TBD)"
+                fi
+            fi
+        done
+    fi
+    
+    if [ -n "$artifacts" ]; then
+        body="${body}
+
+## Artifacts to Produce
+${artifacts}"
+    fi
+    
+    if [ -n "$acceptance" ]; then
+        body="${body}
+
+## Acceptance Criteria
+${acceptance}"
+    fi
+    
+    if [ -n "$decomposes" ]; then
+        body="${body}
+
+## Decomposes Into
+${decomposes}"
+    fi
+    
+    echo "TASK_ID='${task_id}'"
+    echo "TITLE='${task_id}: ${title}'"
+    echo "PARENT='${parent}'"
+    echo "BODY='$(echo "$body" | sed "s/'/'\\\\''/g")'"
+}
+
+# Function to get issue number for a task
+get_task_issue() {
+    local task_id=$1
+    grep -E "\\* \\*\\*\\[ \\] ${task_id}[: ]" .claude/plan.md | grep -oE '\[Issue #[0-9]+\]' | grep -oE '[0-9]+' || echo ""
+}
+
+# Function to find which task decomposes into this task
+find_decomposing_task() {
+    local task_id=$1
+    # Look for lines containing "Decomposes into:" that mention this task ID
+    grep -E "Decomposes into:.*${task_id}" .claude/plan.md | while IFS= read -r line; do
+        # Find the task line that contains this decomposition (look backwards)
+        line_num=$(grep -n -F "$line" .claude/plan.md | cut -d: -f1)
+        # Search backwards from this line to find the task header
+        sed -n "1,${line_num}p" .claude/plan.md | tac | grep -m1 -E '^\* \*\*\[ \] T-[0-9]+' | grep -oE 'T-[0-9]+' | head -1
+    done | head -1
+}
+
+# Main processing loop
+CREATED_COUNT=0
+TOTAL_TBD=$(grep -c '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]' .claude/plan.md || echo 0)
+
+if [ "$TOTAL_TBD" -eq 0 ]; then
+    echo -e "${YELLOW}No tasks with [Issue #TBD] found.${NC}"
+    exit 0
+fi
+
+echo -e "${GREEN}Found ${TOTAL_TBD} tasks needing issues${NC}"
+
+while grep -q '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]' .claude/plan.md; do
+    # Find first task with [Issue #TBD] (must be on a task line starting with * **[ ] T-)
+    TASK_LINE_NUM=$(grep -n '^\* \*\*\[ \] T-[0-9].*\[Issue #TBD\]' .claude/plan.md | head -1 | cut -d: -f1)
+    
+    # Extract task details
+    eval "$(extract_task_details $TASK_LINE_NUM)"
+    
+    echo -e "\n${YELLOW}Creating issue for ${TASK_ID}: ${TITLE}${NC}"
+    
+    # Create GitHub issue
+    ISSUE_OUTPUT=$(gh issue create --title "$TITLE" --body "$BODY" 2>&1)
+    ISSUE_NUM=$(echo "$ISSUE_OUTPUT" | grep -oE '[0-9]+$' | tail -1)
+    
+    if [ -z "$ISSUE_NUM" ]; then
+        echo -e "${RED}Failed to create issue. Output: ${ISSUE_OUTPUT}${NC}"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}Created issue #${ISSUE_NUM}${NC}"
+    
+    # Update plan.md with issue number (only first occurrence on this line)
+    sed -i "${TASK_LINE_NUM}s/\[Issue #TBD\]/[Issue #${ISSUE_NUM}]/" .claude/plan.md
+    
+    # Establish sub-issue relationship
+    # First check if this task has an explicit Parent field
+    if [ -n "$PARENT" ] && [ "$PARENT" != "none" ]; then
+        # This is a subtask with explicit parent - link to parent task's issue
+        PARENT_ISSUE=$(get_task_issue "$PARENT")
+        if [ -n "$PARENT_ISSUE" ]; then
+            echo -e "Linking as sub-issue of ${PARENT} (Issue #${PARENT_ISSUE})"
+            gh sub-issue add "$PARENT_ISSUE" "$ISSUE_NUM" --repo "$REPO" || \
+                echo -e "${RED}Error: Failed to establish sub-issue relationship${NC}"
+        else
+            echo -e "${YELLOW}Warning: Parent task ${PARENT} has no issue yet${NC}"
+        fi
+    else
+        # Check if this task is part of another task's decomposition
+        DECOMPOSING_TASK=$(find_decomposing_task "$TASK_ID")
+        if [ -n "$DECOMPOSING_TASK" ]; then
+            # This task is decomposed from another task - link to that task's issue
+            DECOMPOSING_ISSUE=$(get_task_issue "$DECOMPOSING_TASK")
+            if [ -n "$DECOMPOSING_ISSUE" ]; then
+                echo -e "Linking as sub-issue of decomposing task ${DECOMPOSING_TASK} (Issue #${DECOMPOSING_ISSUE})"
+                gh sub-issue add "$DECOMPOSING_ISSUE" "$ISSUE_NUM" --repo "$REPO" || \
+                    echo -e "${RED}Error: Failed to establish sub-issue relationship${NC}"
+            else
+                echo -e "${YELLOW}Warning: Decomposing task ${DECOMPOSING_TASK} has no issue yet${NC}"
+            fi
+        else
+            # This is a top-level task - link to spec issue
+            echo -e "Linking as sub-issue of spec (Issue #${SPEC_ISSUE})"
+            gh sub-issue add "$SPEC_ISSUE" "$ISSUE_NUM" --repo "$REPO" || \
+                echo -e "${RED}Error: Failed to establish sub-issue relationship${NC}"
+        fi
+    fi
+    
+    CREATED_COUNT=$((CREATED_COUNT + 1))
+    echo -e "${GREEN}Progress: ${CREATED_COUNT}/${TOTAL_TBD}${NC}"
+done
+
+echo -e "\n${GREEN}✓ Successfully created ${CREATED_COUNT} GitHub issues${NC}"
+echo -e "${GREEN}✓ Updated .claude/plan.md with issue numbers${NC}"
+
+# Update existing issues that have new dependencies
+echo -e "\n${YELLOW}Checking for dependency updates...${NC}"
+
+# Find all tasks that have dependencies
+grep -E '^\* \*\*Dependencies:' .claude/plan.md | while IFS= read -r line; do
+    deps=$(echo "$line" | sed 's/.*Dependencies:[[:space:]]*//')
+    if [ -n "$deps" ] && [ "$deps" != "none" ]; then
+        # Find the task this belongs to (look backwards for task ID)
+        task_line=$(grep -B5 "$line" .claude/plan.md | grep -E 'T-[0-9]+' | tail -1)
+        task_id=$(echo "$task_line" | grep -oE 'T-[0-9]+' | head -1)
+        task_issue=$(echo "$task_line" | grep -oE '\[Issue #[0-9]+\]' | grep -oE '[0-9]+' || echo "")
+        
+        if [ -n "$task_issue" ]; then
+            # Check if all dependency tasks now have issues
+            all_deps_have_issues=true
+            IFS=',' read -ra DEPS <<< "$deps"
+            for dep in "${DEPS[@]}"; do
+                dep=$(echo "$dep" | xargs)
+                if [[ $dep == T-* ]]; then
+                    dep_issue=$(get_task_issue "$dep")
+                    if [ -z "$dep_issue" ]; then
+                        all_deps_have_issues=false
+                        break
+                    fi
+                fi
+            done
+            
+            if $all_deps_have_issues; then
+                echo -e "All dependencies of ${task_id} now have issues - consider updating issue #${task_issue}"
+            fi
+        fi
+    fi
+done
+
+echo -e "\n${GREEN}Done! All tasks now have GitHub issues.${NC}"

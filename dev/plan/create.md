@@ -8,25 +8,38 @@ description: Create initial plan from specification
 ## Preflight Checks
 
 ### Check 1: Specification exists
-- Spec location: !`[ -f .claude/spec.md ] && echo ".claude/spec.md" || ([ -f spec.md ] && echo "spec.md" || echo "NOT_FOUND")`
+- Spec in .claude: !`[ -f .claude/spec.md ] && echo "true" || echo "false"`
+- Spec in root: !`[ -f spec.md ] && echo "true" || echo "false"`
 - Plan already exists: !`[ -f .claude/plan.md ] && echo "true" || echo "false"`
 
-**If spec_location is "NOT_FOUND":**
+**If both spec checks are "false":**
 Stop and inform user: "No specification found. Please run `/dev/spec` first to create one."
 
 **If plan_exists is "true":**
 Stop and inform user: "Plan already exists at .claude/plan.md. Run `/dev/plan/analyze` to continue analysis."
 
-## Specification Content
-!`[ -f .claude/spec.md ] && cat .claude/spec.md || ([ -f spec.md ] && cat spec.md || echo "")`
+## Specification Content (.claude/spec.md)
+!`[ -f .claude/spec.md ] && cat .claude/spec.md || echo ""`
+
+## Specification Content (spec.md)
+!`[ -f spec.md ] && cat spec.md || echo ""`
 
 ## Spec State
-!`[ -f .claude/spec-state.json ] && cat .claude/spec-state.json || echo "{}"`
+!`[ -f .claude/spec-state.json ] && cat .claude/spec-state.json || echo ""`
+
+## Spec GitHub Issue (if exists)
+!`[ -f .claude/spec-state.json ] && jq -r ".meta.github_issue" .claude/spec-state.json || echo ""`
 
 ## Algorithm to Execute
 
+### Step 0: Determine which spec to use
+Check the context values from above:
+- If .claude/spec.md exists (spec_in_claude is "true"), use that
+- Otherwise if spec.md exists (spec_in_root is "true"), use that
+- Otherwise stop with error
+
 ### Step 1: Parse Specification
-Extract from the spec:
+Extract from the spec (whichever was found):
 1. **Scope & Deliverables** (deliverable nouns only, with exact spec references)
 2. **Constraints & NFRs** (performance, security, platforms, with spec citations)
 3. **Interfaces/Contracts** (data shapes, protocols, with spec citations)
@@ -240,7 +253,7 @@ This script will:
 ### Task Relationships
 - **Dependencies**: Prerequisites that must complete first (tracked in task lists)
 - **Decomposition**: Parent-child breakdown (tracked as sub-issues)
-- Top-level tasks → sub-issues of spec issue #!`[ -f .claude/spec-state.json ] && jq -r ".meta.github_issue // empty" .claude/spec-state.json || echo ""`
+- Top-level tasks → sub-issues of spec issue (see "Spec GitHub Issue" context above)
 - Decomposed tasks → sub-issues of their parent task
 
 ### Prohibitions

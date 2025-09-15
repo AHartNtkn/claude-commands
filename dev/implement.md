@@ -27,12 +27,10 @@ model: claude-sonnet-4-20250514
    - Run: `git diff --quiet && git diff --cached --quiet || { echo "Working tree dirty"; exit 1; }`
 3. Sync and detect default branch:
    - Run: `git fetch --all --prune`
-   - Determine `DEFAULT_BRANCH` with robust fallback:
+   - Determine `DEFAULT_BRANCH` with simple detection:
      ```bash
-     DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p' || echo "")
-     if [ -z "$DEFAULT_BRANCH" ]; then
-       DEFAULT_BRANCH=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || echo "")
-     fi
+     # Simple, reliable default branch detection
+     DEFAULT_BRANCH=$(git remote show origin | grep "HEAD branch" | cut -d: -f2 | xargs)
      if [ -z "$DEFAULT_BRANCH" ]; then
        DEFAULT_BRANCH="main"  # Fallback to common default
        echo "Warning: Could not detect default branch, using 'main'"
@@ -157,19 +155,42 @@ This phase ensures you understand the complete context before implementation.
        # Find and analyze merged PRs
        echo "=== Analyzing dependency $DEP (Issue #$DEP_ISSUE) ==="
        
-       # Use Task tool for comprehensive analysis
-       # Task: "Analyze PR implementation for issue #$DEP_ISSUE and extract:
-       #        - Key APIs and interfaces created
-       #        - Design patterns used
-       #        - Test strategies employed
-       #        - Conventions established"
+       # Use Task tool for comprehensive analysis with EXPLICIT instructions
+       # Task prompt MUST include:
+       #
+       # "Analyze the LOCAL codebase in THIS repository for issue #$DEP_ISSUE.
+       #
+       # CRITICAL INSTRUCTIONS:
+       # - This is a LOCAL issue in THIS repository only
+       # - Task IDs (T-XXX) are internal to this project - DO NOT web search for them
+       # - Use ONLY these tools: Read, Grep, Glob, Bash (for gh commands)
+       # - DO NOT use WebSearch or WebFetch for any T-XXX or #XXX references
+       #
+       # WHERE TO LOOK:
+       # 1. Find the PR that closed issue #$DEP_ISSUE:
+       #    gh pr list --state merged --search '#$DEP_ISSUE'
+       # 2. Get files changed in that PR:
+       #    gh pr diff [PR#] --name-only
+       # 3. Read the actual implementation files in src/
+       # 4. Review test files that were added/modified
+       # 5. Check the PR body and commits for context
+       #
+       # EXTRACT:
+       # - Key APIs and interfaces created (with exact function signatures)
+       # - Design patterns used (with code examples)
+       # - Test strategies employed (with test file references)
+       # - Conventions established (naming, structure, error handling)
+       #
+       # Focus on code in THIS repository only. All analysis must be based on
+       # actual files you read, not external documentation."
      fi
    done
    ```
-3. Use Task tool with file-analyzer sub-agent for each dependency PR to extract:
-   - APIs and interfaces created that this task will use
-   - Patterns and conventions to follow
-   - Test strategies that worked well
+3. Use Task tool with appropriate sub-agent (file-analyzer or code-analyzer) following the template above:
+   - MUST specify this is LOCAL repository analysis
+   - MUST prohibit WebSearch/WebFetch for task IDs
+   - MUST provide specific file paths or gh commands to use
+   - Extract APIs, patterns, and test strategies from ACTUAL CODE, not web docs
 
 #### 2.5) Review Completed Sub-issues
 For each completed sub-issue with merged PRs:
@@ -186,7 +207,9 @@ For each completed sub-issue with merged PRs:
      # For each PR, use Task tool for deep analysis
      PR_NUMS=$(cat .gh_pr_list_$SUBISSUE.json | jq -r '.[].number')
      for PR in $PR_NUMS; do
-       # Task: "Review PR #$PR implementation and extract patterns"
+       # Task: "Review LOCAL PR #$PR in THIS repository.
+       # CRITICAL: This is a LOCAL PR - use 'gh pr view $PR' and 'gh pr diff $PR'
+       # DO NOT web search. Extract patterns from actual code files in this repo."
      done
    done
    ```

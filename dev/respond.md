@@ -93,16 +93,48 @@ Before analyzing any feedback, populate the project_context in the session file:
 
 **Process feedback items ONE AT A TIME. Complete each investigation before moving to the next.**
 
-#### Step 3.1: Build Feedback List
+#### Step 3.1: Extract Feedback from Standard Review Sections
 
-Parse review comments and list ALL feedback items in session:
-```json
-"feedback_items": [
-  {"id": "F001", "reviewer_comment": "[exact quote]", "status": "pending"},
-  {"id": "F002", "reviewer_comment": "[exact quote]", "status": "pending"},
-  {"id": "F003", "reviewer_comment": "[exact quote]", "status": "pending"}
-]
-```
+The `/dev/review` command produces these standard sections. Check for ALL of them:
+
+1. **Check for "## Critical Issues (Must Fix)"**
+   - STATE: "Checking for Critical Issues section..."
+   - Search for this exact heading in the review
+   - Extract all items listed under this heading until the next ## heading
+   - STATE: "Found [N] critical issues" or "No Critical Issues section found"
+
+2. **Check for "## High Priority Issues (Should Fix)"**
+   - STATE: "Checking for High Priority Issues section..."
+   - Search for this exact heading in the review
+   - Extract all items listed under this heading until the next ## heading
+   - STATE: "Found [N] high priority issues" or "No High Priority Issues section found"
+
+3. **Check for "## Medium Priority Issues (Consider Fixing)"**
+   - STATE: "Checking for Medium Priority Issues section..."
+   - Search for this exact heading in the review
+   - Extract all items listed under this heading until the next ## heading
+   - STATE: "Found [N] medium priority issues" or "No Medium Priority Issues section found"
+
+4. **Check for "## Low Priority Suggestions"**
+   - STATE: "Checking for Low Priority Suggestions section..."
+   - Search for this exact heading in the review
+   - Extract all items listed under this heading until the next ## heading
+   - STATE: "Found [N] low priority suggestions" or "No Low Priority Suggestions section found"
+
+5. **Verification Before Proceeding:**
+   - STATE: "Extraction complete. Sections checked: [✓ Critical, ✓ High, ✓ Medium, ✓ Low]"
+   - STATE: "Total items extracted: [X]"
+   - If any standard section wasn't found, STATE which ones were missing
+   - List all extracted items in session as:
+   ```json
+   "feedback_items": [
+     {"id": "F001", "severity": "critical", "reviewer_comment": "[exact quote]", "status": "pending"},
+     {"id": "F002", "severity": "high", "reviewer_comment": "[exact quote]", "status": "pending"},
+     {"id": "F003", "severity": "medium", "reviewer_comment": "[exact quote]", "status": "pending"}
+   ]
+   ```
+
+**MANDATORY**: You must check all four sections even if some are empty. The STATE outputs are required to prove you checked each section.
 
 #### Step 3.2: Investigation Loop
 
