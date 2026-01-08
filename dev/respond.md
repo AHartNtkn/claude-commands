@@ -10,9 +10,9 @@ description: Systematically respond to PR review feedback with proper issue trac
 - Latest Review: !`bash -c "gh pr view $ARGUMENTS --comments --json comments | jq -r '.comments[-1].body // empty'"`
 - Review Threads: !`bash -c "gh pr view $ARGUMENTS --json comments | jq '.comments'"`
 - Files Changed (excluding sessions): !`bash -c "gh pr diff $ARGUMENTS --name-only | grep -v '\.claude/sessions/'"`
-- Plan exists: !`test -f .claude/plan.md && echo "true" || echo "false"`
-- Spec requirements: !`test -f .claude/spec.md && grep -E "FR-|NFR-" .claude/spec.md || echo ""`
-- Review criteria: !`test -f .claude/spec-state.json && jq ".review_criteria" .claude/spec-state.json || echo "{}"`
+- Plan exists: !`[ -f .claude/plan.md ] && echo "true" || echo "false"`
+- Spec requirements: !`grep -E "FR-|NFR-" .claude/spec.md`
+- Review criteria: !`bash -c "cat .claude/spec-state.json 2>/dev/null | jq '.review_criteria // {}'"`
 
 ## Full PR Diff (excluding session files)
 !`~/.claude/commands/dev/filter-diff.sh $ARGUMENTS`

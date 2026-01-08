@@ -1,5 +1,5 @@
 ---
-allowed-tools: Edit, Read, Bash(test*), Bash(git fetch:*), Bash(git checkout:*), Bash(git pull:*), Bash(git rebase:*), Bash(git branch:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Bash(git remote:*), Bash(git symbolic-ref:*), Bash(git status:*), Bash(git grep:*), Bash(gh issue view:*), Bash(gh issue edit:*), Bash(gh sub-issue:*), Bash(gh pr list:*), Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr ready:*), Bash(npm *), Bash(pnpm *), Bash(yarn *), Bash(python *), Bash(pytest*), Bash(go test*), Bash(cargo test*), Bash(pre-commit *), Bash(jq *), Bash([:*), Bash(grep:*), Bash(sed:*), Bash(echo:*)
+allowed-tools: Edit, Read, Bash(test*), Bash(git fetch:*), Bash(git checkout:*), Bash(git pull:*), Bash(git rebase:*), Bash(git branch:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Bash(git remote:*), Bash(git symbolic-ref:*), Bash(git status:*), Bash(git grep:*), Bash(gh issue view:*), Bash(gh issue edit:*), Bash(gh sub-issue:*), Bash(gh pr list:*), Bash(gh pr view:*), Bash(gh pr diff:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr ready:*), Bash(npm *), Bash(pnpm *), Bash(yarn *), Bash(python *), Bash(pytest*), Bash(go test*), Bash(cargo test*), Bash(pre-commit *), Bash(jq *), Bash([:*), Bash(grep:*), Bash(sed:*), Bash(echo:*), Bash(cat:*), Bash(xargs:*)
 argument-hint: [ISSUE_NUMBER]
 description: Implement a GitHub issue via strict Red→Green→Refactor TDD, small commits, and open a PR.
 model: claude-sonnet-4-20250514
@@ -7,15 +7,16 @@ model: claude-sonnet-4-20250514
 
 ## Initial Context
 - Issue details: !`gh issue view $ARGUMENTS --json number,title,body,state,labels,assignees,url`
-- Sub-issues: !`gh sub-issue list "$ARGUMENTS" --json number,title,state 2>/dev/null || echo "[]"`
 - Current git status: !`git status --short`
 - Current branch: !`git branch --show-current`
-- Default branch: !`git remote show origin 2>/dev/null | sed -n "s/.*HEAD branch: //p" || echo "main"`
+- Default branch: !`git remote show origin | grep "HEAD branch" | cut -d: -f2 | xargs`
 
 ## Spec Context (if available)
-- Relevant requirements: !`[ -f .claude/spec.md ] && grep -E "FR-|NFR-" .claude/spec.md || echo ""`
-- Test strategy: !`[ -f .claude/spec-state.json ] && jq ".test_strategy" .claude/spec-state.json || echo "{}"`
-- Review criteria: !`[ -f .claude/spec-state.json ] && jq ".review_criteria" .claude/spec-state.json || echo "{}"`
+- Spec exists: !`[ -f .claude/spec.md ] && echo "true" || echo "false"`
+- Spec state exists: !`[ -f .claude/spec-state.json ] && echo "true" || echo "false"`
+- Relevant requirements: !`grep -E "FR-|NFR-" .claude/spec.md`
+- Test strategy: !`cat .claude/spec-state.json | jq ".test_strategy"`
+- Review criteria: !`cat .claude/spec-state.json | jq ".review_criteria"`
 
 ## Procedure (execute in order; do not skip)
 ### 0) Preflight

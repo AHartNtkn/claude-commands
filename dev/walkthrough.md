@@ -116,7 +116,90 @@ Example review findings structure:
 }
 ```
 
-Store review findings in `.claude/.review-findings.json` for integration during walkthrough.
+Store raw review findings in `.claude/.review-findings-raw.json` for verification.
+
+### Phase 1B: Issue Verification
+
+**CRITICAL: Verify each surfaced issue before presenting to user.**
+
+For each issue in `issues_introduced`, spawn a dedicated verification agent that:
+
+1. **Reads the actual code** - Not just the diff, but the full file context
+2. **Traces the logic** - Follows the code path to verify the issue exists
+3. **Checks for mitigations** - Looks for guards, error handling, or other patterns that may address the concern
+4. **Renders a verdict** - Marks the issue as `verified`, `false_positive`, or `uncertain`
+
+**Verification Agent Prompt Template:**
+```
+You are VERIFYING whether a reported issue is real or a false positive.
+
+ISSUE BEING VERIFIED:
+- File: {file}
+- Line: {line}
+- Type: {type}
+- Severity: {severity}
+- Description: {description}
+- Suggestion: {suggestion}
+
+YOUR TASK:
+1. Read the FULL file at {file} (not just the diff)
+2. Examine the code at line {line} and surrounding context
+3. Trace the logic flow to determine if this issue is real
+4. Check if there are mitigating factors (guards, validation elsewhere, framework guarantees)
+5. Consider if the reviewer may have misunderstood the code
+
+VERDICTS:
+- "verified" - The issue is real and should be reported
+- "false_positive" - The issue does not actually exist (explain why)
+- "uncertain" - Cannot determine; needs human review
+
+RESPOND WITH JSON:
+{
+  "original_issue_id": "{id}",
+  "verdict": "verified|false_positive|uncertain",
+  "reasoning": "[Detailed explanation of your analysis]",
+  "evidence": "[Specific code snippets or facts that support your verdict]",
+  "mitigating_factors": "[Any guards or patterns that address the concern, if any]"
+}
+
+BE SKEPTICAL of the original finding. Your job is to DISPROVE false positives, not rubber-stamp findings.
+```
+
+**Verification Execution:**
+
+1. Load raw findings from `.claude/.review-findings-raw.json`
+2. For each issue in `issues_introduced`:
+   - Spawn a verification agent with the template above
+   - Collect the verdict
+3. Filter results:
+   - `verified` issues → Include in final findings
+   - `false_positive` issues → Log but exclude from user presentation
+   - `uncertain` issues → Include but mark as needing human verification
+4. Store verified findings in `.claude/.review-findings.json`
+
+**Verification Summary:**
+```json
+{
+  "total_issues_found": 15,
+  "verified_issues": 8,
+  "false_positives": 5,
+  "uncertain_issues": 2,
+  "verification_details": [
+    {
+      "original_issue_id": "new-issue-001",
+      "verdict": "false_positive",
+      "reasoning": "The null check exists on line 42, which guards this access path"
+    }
+  ]
+}
+```
+
+Store verification summary in `.claude/.verification-summary.json`.
+
+**Parallel Verification:**
+- Launch verification agents in parallel for independent issues
+- Group issues by file to allow agents to share context
+- Limit concurrency to avoid overwhelming the system (max 5 parallel agents)
 
 ### Phase 2: Change Organization and Chunking
 
@@ -197,11 +280,17 @@ Create or update `.claude/.walkthrough-state.json`:
 - Performance problems: [Count]  
 - Bugs resolved: [Count]
 
-## ⚠️ Problems Found WITH This PR
+## ⚠️ Problems Found WITH This PR (Verified)
 - Critical issues to fix: [Count]
 - Documentation errors: [Count]
 - Code quality concerns: [Count]
 - Missing test coverage: [Count]
+
+## 🔍 Verification Stats
+- Issues initially flagged: [Total from Phase 1]
+- Verified as real: [Count]
+- Filtered as false positives: [Count]
+- Marked uncertain (needs human review): [Count]
 
 ## 🗺️ Walkthrough Structure
 I'll guide you through [N] semantic chunks organized into:
@@ -245,12 +334,17 @@ For each chunk, structure the explanation as:
 - **Improved:** Performance by reducing database calls from O(n) to O(1)
 
 ### ⚠️ Problems Found in This Change
-[Issues identified WITH this PR's implementation]
+[Issues identified WITH this PR's implementation - VERIFIED by dedicated agents]
+
+**✓ Verified Issues:**
 🐛 **Critical Bug:** Missing null check on line 47 - will crash if user.email undefined
-📝 **Documentation:** Typo in comment line 52: "recieve" should be "receive"  
-🎨 **Code Quality:** Function exceeds 20 lines (currently 35) - consider breaking up
+📝 **Documentation:** Typo in comment line 52: "recieve" should be "receive"
 ⚡ **Performance:** Introduced N+1 query when fetching related data
+
+**? Uncertain (Needs Human Review):**
+🎨 **Code Quality:** Function exceeds 20 lines (currently 35) - consider breaking up
 🧪 **Testing Gap:** No test coverage for error handling path
+
 💡 **Suggestion:** Add input validation before processing user data
 
 ### 🔗 Connections
@@ -282,7 +376,9 @@ Implement navigation commands:
 - `jump [chunk-id]` - Go to specific chunk
 - `overview` - Return to PR summary
 - `files` - List all changed files
-- `issues` - Show all review findings
+- `issues` - Show all verified review findings
+- `false-positives` - Show filtered false positives with reasoning
+- `uncertain` - Show issues needing human review
 - `search [term]` - Find chunks containing term
 
 **Depth Controls:**
@@ -353,6 +449,14 @@ When walkthrough completes:
 - Time spent: [duration]
 - Questions asked: [count]
 - Depth level used: [level]
+
+### 🔍 Verification Summary
+- Issues initially flagged by review: [total]
+- Verified as real problems: [count]
+- Filtered as false positives: [count]
+- Marked uncertain: [count]
+
+*Type `false-positives` to review what was filtered out and why.*
 
 ### 🎓 Key Takeaways
 1. [Main architectural change]

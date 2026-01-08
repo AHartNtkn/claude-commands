@@ -17,6 +17,7 @@ Continuing work:
 /plan                 # Finds next question or task automatically
 /implement [issue#]   # Work on any analyzed task
 /review [PR#]         # Review code quality
+/walkthrough/repo     # Educational architecture tour of current repo
 ```
 
 ## Commands
@@ -40,6 +41,7 @@ Continuing work:
   - Generates specific recommendations
 - **`/respond [PR#]`** - Handle review feedback systematically
 - **`/walkthrough [PR#]`** - Educational code tour with progressive disclosure
+- **`/walkthrough/repo [path]`** - Educational architecture tour of an entire repository
 
 ## Common Workflows
 
