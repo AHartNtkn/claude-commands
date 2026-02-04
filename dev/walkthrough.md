@@ -193,6 +193,8 @@ After all 4 agents complete, the **top-level agent** (you) assembles the combine
 
 Launch 6 Sonnet subagents **in parallel**, each checking one quality criterion of the walkthrough plan. Each agent receives the plan from Phase 1 and the full diff.
 
+**ALL 6 agents are mandatory.** These agents validate the *walkthrough plan's* quality, not the PR's complexity. A small PR can still produce a poorly chunked, misordered, or incomplete walkthrough. Each agent checks a distinct structural property that the others cannot — skipping any of them leaves a blind spot in plan validation. Do not skip agents based on PR size or perceived simplicity.
+
 Every agent uses this shared preamble:
 ```
 You are reviewing a walkthrough plan for PR #[number]: "[title]".
